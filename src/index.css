@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* ── Custom design tokens ── */
+:root {
+  --gov-saffron: #FF6700;
+  --gov-green:   #138808;
+  --gov-navy:    #003580;
+  --gov-gold:    #C9A227;
+  --paper-bg:    #FDFAF4;
+  --paper-border:#B8A77A;
+  --ink:         #1A1A2E;
+  --ink-muted:   #4A4A6A;
+  --field-bg:    #FEFEFE;
+  --field-border:#BFBFBF;
+  --field-focus: #003580;
+  --red-seal:    #9B1C1C;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { font-size: 16px; }
+
+body {
+  margin: 0;
+  background: linear-gradient(135deg, #e8e0d0 0%, #f0ebe0 50%, #e4ddd0 100%);
+  min-height: 100vh;
+  font-family: 'Inter', sans-serif;
+  color: var(--ink);
+}
+
+/* ── Watermark ── */
+.watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.watermark svg {
+  width: 340px;
+  height: 340px;
+  opacity: 0.04;
+  transform: rotate(-15deg);
+}
+
+/* ── Stamp animation ── */
+@keyframes stampIn {
+  0%   { transform: scale(3) rotate(-15deg); opacity: 0; }
+  60%  { transform: scale(0.95) rotate(2deg); opacity: 1; }
+  80%  { transform: scale(1.05) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.stamp-animate {
+  animation: stampIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Fade-up rows ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-row {
+  animation: fadeUp 0.4s ease both;
+}
+
+/* ── Input focus glow ── */
+.gov-input {
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+.gov-input:focus {
+  outline: none;
+  border-color: var(--field-focus);
+  box-shadow: 0 0 0 3px rgba(0, 53, 128, 0.12);
+  background: #fff;
+}
+
+/* ── Submit button ripple ── */
+@keyframes ripple {
+  to { transform: scale(4); opacity: 0; }
+}
+
+.btn-submit {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.2s;
+}
+.btn-submit:hover { transform: translateY(-2px); }
+.btn-submit:active { transform: translateY(0); }
+.btn-submit .ripple-circle {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.35);
+  transform: scale(0);
+  animation: ripple 0.6s linear;
+  pointer-events: none;
+}
+
+/* ── Tricolor strip ── */
+.tricolor-strip {
+  height: 6px;
+  background: linear-gradient(
+    to right,
+    var(--gov-saffron) 33.33%,
+    #fff 33.33% 66.66%,
+    var(--gov-green) 66.66%
+  );
+}
