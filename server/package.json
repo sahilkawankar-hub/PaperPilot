@@ -1,0 +1,27 @@
+{
+  "name": "paperpilot-server",
+  "version": "1.0.0",
+  "description": "PaperPilot Express API – Gemini-powered document field extractor",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "gemini",
+    "express",
+    "ocr",
+    "india",
+    "government"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "multer": "^2.2.0"
+  }
+}
