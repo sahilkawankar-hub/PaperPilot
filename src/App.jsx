@@ -1,4 +1,65 @@
 import { useState, useRef } from 'react'
+import UploadPage from './UploadPage.jsx'
+
+/* ─── Root App shell ─── */
+export default function App() {
+  const [page, setPage] = useState('form')
+
+  return (
+    <div>
+      {/* ── Global Nav ── */}
+      <nav
+        style={{
+          background: '#003580',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+        }}
+      >
+        <div className="mx-auto max-w-5xl px-6 flex items-center justify-between h-14">
+          {/* Logo / brand */}
+          <button
+            id="navBrandLogo"
+            onClick={() => setPage('form')}
+            className="flex items-center gap-2 text-white font-bold text-lg"
+            style={{ fontFamily: 'EB Garamond, serif', background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            <span style={{ color: '#FF6700' }}>Paper</span>
+            <span style={{ color: '#ffffff' }}>Pilot</span>
+          </button>
+
+          {/* Nav links */}
+          <div className="flex items-center gap-1">
+            <NavLink id="navFormLink" label="Apply for Certificate" active={page === 'form'} onClick={() => setPage('form')} />
+            <NavLink id="navUploadLink" label="Upload Document" active={page === 'upload'} onClick={() => setPage('upload')} />
+          </div>
+        </div>
+      </nav>
+
+      {/* ── Page content ── */}
+      {page === 'form' ? <IncomeCertificateForm /> : <UploadPage />}
+    </div>
+  )
+}
+
+function NavLink({ id, label, active, onClick }) {
+  return (
+    <button
+      id={id}
+      onClick={onClick}
+      className="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+      style={{
+        background: active ? 'rgba(255,255,255,0.15)' : 'transparent',
+        color: active ? '#ffffff' : 'rgba(255,255,255,0.65)',
+        border: 'none',
+        cursor: 'pointer',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
 
 /* ─── Field definitions ─── */
 const FIELDS = [
@@ -97,7 +158,7 @@ function formatAadhaar(val) {
 }
 
 /* ─── Main Component ─── */
-export default function IncomeCertificateForm() {
+function IncomeCertificateForm() {
   const initialState = Object.fromEntries(FIELDS.map((f) => [f.id, '']))
   const [form, setForm] = useState(initialState)
   const [errors, setErrors] = useState({})
