@@ -8,7 +8,7 @@ Government paperwork is confusing, jargon-heavy, and error-prone to fill manuall
 2. **Confirms** — every extracted field is shown to the user for explicit review and edit before anything is finalized (no silent auto-submission)
 3. **Fills** — a Playwright automation agent drafts the confirmed data into a self-hosted replica of the government form
 
-Built by **Team Sync** — Sahil & Rudra M. Chavan, Terna Engineering College.
+Built by **Team Sync** — Sahil & Rudra, Terna Engineering College.
 
 ## Why a replica form, not the live portal?
 Automating live government portals carries authorization, ToS, and fragility risks. PaperPilot demonstrates the full technical flow against a self-hosted replica; live portal integration is a roadmap item pending official API partnership.
