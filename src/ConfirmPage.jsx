@@ -52,44 +52,156 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
     setConfirmed(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const handleSubmit = () => {
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState(null)
+  const [fillResult, setFillResult] = useState(null)
+  const [showFullImage, setShowFullImage] = useState(false)
+
+  const handleSubmit = async () => {
     if (!allConfirmed) return
-    setSubmitted(true)
+    setSubmitting(true)
+    setSubmitError(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+
+    try {
+      const response = await fetch('http://localhost:3001/fill-form', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      })
+
+      const resData = await response.json()
+      if (!response.ok) throw new Error(resData.error || 'Form fill failed')
+
+      setFillResult(resData)
+      setSubmitted(true)
+    } catch (err) {
+      console.error('Fill form error:', err)
+      setSubmitError(err.message || 'Automated form filling failed. Make sure server is running.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  /* ── Success screen ── */
+  /* ── Loading screen during Playwright automation ── */
+  if (submitting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'linear-gradient(135deg, #e8e0d0 0%, #f0ebe0 50%, #e4ddd0 100%)' }}>
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center" style={{ border: '1.5px solid #B8A77A' }}>
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'EB Garamond, serif', color: '#003580' }}>
+            Automating Form Filling...
+          </h3>
+          <p className="text-xs leading-relaxed" style={{ color: '#4A4A6A' }}>
+            Launching headless Playwright browser to populate the official application form with your confirmed details and capture a full-page screenshot proof.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  /* ── Success screen with Screenshot Proof ── */
   if (submitted) {
     const refNo = `IC/${new Date().getFullYear()}/${String(Math.floor(Math.random() * 90000) + 10000)}`
     return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'linear-gradient(135deg, #e8e0d0 0%, #f0ebe0 50%, #e4ddd0 100%)' }}>
-        <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full p-10 text-center overflow-hidden"
-          style={{ border: '2px solid #138808' }}>
-          <div style={{ height: 6, background: 'linear-gradient(to right, #FF6700 33.33%, #fff 33.33% 66.66%, #138808 66.66%)', position: 'absolute', top: 0, left: 0, right: 0 }} />
-          <div className="mx-auto mt-4 mb-5 w-24 h-24 rounded-full border-4 flex items-center justify-center"
-            style={{ borderColor: '#138808', background: '#f0fff4' }}>
-            <svg viewBox="0 0 24 24" className="w-12 h-12" fill="none" stroke="#138808" strokeWidth="2.2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h2 className="text-2xl font-bold mb-1" style={{ fontFamily: 'EB Garamond, serif', color: '#138808' }}>
-            Submitted for Filling!
-          </h2>
-          <p className="text-sm mb-4" style={{ color: '#4A4A6A' }}>
-            All {CONFIRM_FIELDS.length} fields confirmed and submitted successfully.
-          </p>
-          <div className="my-4 py-3 rounded-lg border" style={{ borderColor: '#B8A77A', background: '#FDFAF4' }}>
-            <p className="text-xs uppercase tracking-widest mb-1" style={{ color: '#4A4A6A' }}>Reference Number</p>
-            <p className="text-xl font-bold tracking-widest" style={{ fontFamily: 'EB Garamond, serif', color: '#003580' }}>{refNo}</p>
-          </div>
-          <div className="flex gap-3 justify-center mt-6">
-            <button onClick={onBack}
-              className="px-5 py-2 rounded-lg text-sm font-semibold border-2 transition-colors hover:bg-blue-50"
-              style={{ borderColor: '#003580', color: '#003580' }}>
-              ← Upload Another
-            </button>
+      <div className="min-h-screen py-10 px-4" style={{ background: 'linear-gradient(135deg, #e8e0d0 0%, #f0ebe0 50%, #e4ddd0 100%)' }}>
+        <div className="mx-auto max-w-3xl">
+          <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden p-8" style={{ border: '2px solid #138808' }}>
+            <div style={{ height: 6, background: 'linear-gradient(to right, #FF6700 33.33%, #fff 33.33% 66.66%, #138808 66.66%)', position: 'absolute', top: 0, left: 0, right: 0 }} />
+
+            <div className="text-center mb-6">
+              <div className="mx-auto mt-2 mb-4 w-20 h-20 rounded-full border-4 flex items-center justify-center"
+                style={{ borderColor: '#138808', background: '#f0fff4' }}>
+                <svg viewBox="0 0 24 24" className="w-10 h-10" fill="none" stroke="#138808" strokeWidth="2.2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold mb-1" style={{ fontFamily: 'EB Garamond, serif', color: '#138808' }}>
+                Form Filled & Submitted Successfully!
+              </h2>
+              <p className="text-sm" style={{ color: '#4A4A6A' }}>
+                All {CONFIRM_FIELDS.length} fields were automatically filled by Playwright automation.
+              </p>
+              <div className="my-4 py-3 rounded-lg border max-w-md mx-auto" style={{ borderColor: '#B8A77A', background: '#FDFAF4' }}>
+                <p className="text-xs uppercase tracking-widest mb-1" style={{ color: '#4A4A6A' }}>Application Reference Number</p>
+                <p className="text-xl font-bold tracking-widest" style={{ fontFamily: 'EB Garamond, serif', color: '#003580' }}>{refNo}</p>
+              </div>
+            </div>
+
+            {/* ── Screenshot Proof Section ── */}
+            {fillResult?.screenshotUrl && (
+              <div className="mt-6 border-t pt-6" style={{ borderColor: '#e5e7eb' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold flex items-center gap-2" style={{ color: '#003580' }}>
+                    📸 Full-Page Automation Proof (Playwright Screenshot)
+                  </h4>
+                  <a
+                    href={fillResult.screenshotUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-semibold px-3 py-1 rounded-lg border transition-colors"
+                    style={{ borderColor: '#003580', color: '#003580', background: '#f0f4ff' }}
+                  >
+                    ↗ Open Full Size
+                  </a>
+                </div>
+
+                {/* Screenshot Container */}
+                <div
+                  onClick={() => setShowFullImage(true)}
+                  className="group relative rounded-xl overflow-hidden border-2 cursor-pointer shadow-md transition-all hover:shadow-xl max-h-96 overflow-y-auto"
+                  style={{ borderColor: '#B8A77A' }}
+                >
+                  <img
+                    src={fillResult.screenshotUrl}
+                    alt="Playwright Form Fill Full Page Screenshot"
+                    className="w-full h-auto object-top"
+                  />
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="bg-white/90 px-4 py-2 rounded-full text-xs font-bold shadow-lg" style={{ color: '#003580' }}>
+                      🔍 Click to Expand Proof
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-center mt-8">
+              <button onClick={onBack}
+                className="px-6 py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors hover:bg-blue-50"
+                style={{ borderColor: '#003580', color: '#003580' }}>
+                ← Upload Another Document
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* ── Fullscreen Image Modal ── */}
+        {showFullImage && (
+          <div
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowFullImage(false)}
+          >
+            <div className="relative max-w-4xl w-full max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="p-4 bg-gray-900 text-white flex justify-between items-center shrink-0">
+                <span className="text-sm font-semibold">📸 Full-Page Automation Proof</span>
+                <button
+                  onClick={() => setShowFullImage(false)}
+                  className="text-gray-400 hover:text-white font-bold text-lg px-2"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto flex-1 bg-gray-100 flex justify-center">
+                <img
+                  src={fillResult.screenshotUrl}
+                  alt="Full Page Proof"
+                  className="max-w-full h-auto shadow-lg rounded"
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -321,6 +433,12 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
             </div>
           </div>
         </div>
+
+        {submitError && (
+          <div className="rounded-2xl p-4 mb-4 text-xs font-semibold flex items-center gap-2" style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', color: '#991b1b' }}>
+            <span>⚠ {submitError}</span>
+          </div>
+        )}
 
         {/* ── Submit Section ── */}
         <div
