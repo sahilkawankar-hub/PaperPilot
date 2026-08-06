@@ -1,14 +1,22 @@
 import { useState, useRef } from 'react'
 
-/* ── Placeholder async "analysis" function ── */
+/* ── Real backend call ── */
 async function analyzeDocument(file) {
-  // Simulate a 2.5-second backend call
-  await new Promise((resolve) => setTimeout(resolve, 2500))
-  return {
-    name: file.name,
-    size: (file.size / 1024).toFixed(1) + ' KB',
-    type: file.type,
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch('http://localhost:3001/extract', {
+    method: 'POST',
+    body: formData,
+  })
+
+  const json = await response.json()
+
+  if (!response.ok) {
+    throw new Error(json.error || 'Extraction failed. Please try again.')
   }
+
+  return json // { success, fileName, fileSize, model, data: { ... } }
 }
 
 /* ── File type helpers ── */
@@ -20,7 +28,19 @@ const FILE_ICONS = {
   'image/png': '🖼️',
 }
 
-export default function UploadPage() {
+/* ── Field label map ── */
+const FIELD_LABELS = [
+  { key: 'applicantName',        label: 'Applicant Name' },
+  { key: 'fatherOrHusbandName',  label: "Father's / Husband's Name" },
+  { key: 'dateOfBirth',          label: 'Date of Birth' },
+  { key: 'address',              label: 'Address' },
+  { key: 'annualIncome',         label: 'Annual Income (₹)' },
+  { key: 'occupation',           label: 'Occupation' },
+  { key: 'purposeOfCertificate', label: 'Purpose of Certificate' },
+  { key: 'aadhaarNumber',        label: 'Aadhaar Number' },
+]
+
+export default function UploadPage({ onExtracted }) {
   const [file, setFile] = useState(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [result, setResult] = useState(null)
@@ -39,12 +59,10 @@ export default function UploadPage() {
   const handleFile = async (selected) => {
     if (!selected) return
 
-    // Validate type
     if (!ACCEPT_MIME.includes(selected.type)) {
       setError('Unsupported file type. Please upload a PDF, JPG, or PNG.')
       return
     }
-    // Validate size (10 MB limit)
     if (selected.size > 10 * 1024 * 1024) {
       setError('File is too large. Maximum allowed size is 10 MB.')
       return
@@ -57,9 +75,14 @@ export default function UploadPage() {
 
     try {
       const data = await analyzeDocument(selected)
-      setResult(data)
+      // If parent gave us a callback, navigate to confirm page
+      if (onExtracted) {
+        onExtracted({ ...data, explanation: data.data?.explanation, checklist: data.data?.checklist })
+      } else {
+        setResult(data)
+      }
     } catch (err) {
-      setError('Analysis failed. Please try again.')
+      setError(err.message || 'Analysis failed. Please try again.')
     } finally {
       setAnalyzing(false)
     }
@@ -75,7 +98,7 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen py-12 px-4" style={{ background: 'linear-gradient(135deg, #e8e0d0 0%, #f0ebe0 50%, #e4ddd0 100%)' }}>
-      <div className="mx-auto max-w-xl">
+      <div className="mx-auto" style={{ maxWidth: result ? 720 : 520 }}>
 
         {/* ── Card ── */}
         <div
@@ -168,7 +191,6 @@ export default function UploadPage() {
             {/* ── Analyzing state ── */}
             {analyzing && (
               <div className="flex flex-col items-center gap-5 py-6">
-                {/* File pill */}
                 <div
                   className="flex items-center gap-3 rounded-xl px-4 py-3 w-full"
                   style={{ background: '#f0f4ff', border: '1px solid #a3b4d6' }}
@@ -180,7 +202,6 @@ export default function UploadPage() {
                   </div>
                 </div>
 
-                {/* Spinner */}
                 <Spinner />
 
                 <p id="analyzingStatus" className="text-sm font-medium" style={{ color: '#003580' }}>
@@ -197,43 +218,86 @@ export default function UploadPage() {
               <div className="py-2">
                 {/* Success banner */}
                 <div
-                  className="flex items-center gap-3 rounded-xl px-4 py-3 mb-5"
+                  className="flex items-center gap-3 rounded-xl px-4 py-3 mb-6"
                   style={{ background: '#f0fff4', border: '1px solid #6ee7b7' }}
                 >
                   <svg className="w-5 h-5 shrink-0" style={{ color: '#138808' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className="text-sm font-semibold" style={{ color: '#065f46' }}>
-                    Analysis complete!
-                  </span>
+                  <div>
+                    <span className="text-sm font-semibold" style={{ color: '#065f46' }}>
+                      Analysis complete!
+                    </span>
+                    <span className="text-xs ml-2" style={{ color: '#6B7280' }}>
+                      Powered by {result.model}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Result details */}
-                <table className="w-full text-sm border-collapse">
-                  <tbody>
-                    {[
-                      ['File Name', result.name],
-                      ['File Size', result.size],
-                      ['File Type', result.type],
-                      ['Status', 'Fields extracted successfully'],
-                    ].map(([label, value]) => (
-                      <tr key={label} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                        <td className="py-2.5 pr-4 font-semibold text-xs uppercase tracking-wide w-1/3" style={{ color: '#4A4A6A' }}>
-                          {label}
-                        </td>
-                        <td className="py-2.5 text-xs" style={{ color: '#1A1A2E', wordBreak: 'break-all' }}>
-                          {value}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {/* ── Extracted Fields Grid ── */}
+                <h2 className="text-base font-bold mb-3" style={{ color: '#003580', fontFamily: 'EB Garamond, serif' }}>
+                  📋 Extracted Information
+                </h2>
+                <div className="grid grid-cols-1 gap-3 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                  {FIELD_LABELS.map(({ key, label }) => (
+                    <div
+                      key={key}
+                      className="rounded-xl px-4 py-3"
+                      style={{
+                        background: result.data[key] ? '#f0f4ff' : '#fafafa',
+                        border: `1px solid ${result.data[key] ? '#a3b4d6' : '#e5e7eb'}`,
+                      }}
+                    >
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#4A4A6A' }}>
+                        {label}
+                      </p>
+                      <p className="text-sm font-medium" style={{ color: result.data[key] ? '#1A1A2E' : '#9CA3AF' }}>
+                        {result.data[key] ?? '—  Not found in document'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Explanation ── */}
+                {result.data.explanation && (
+                  <div
+                    className="rounded-xl px-4 py-4 mb-4"
+                    style={{ background: '#fffbeb', border: '1px solid #fde68a' }}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#92400e' }}>
+                      📌 About This Document
+                    </p>
+                    <p className="text-sm leading-relaxed" style={{ color: '#1A1A2E' }}>
+                      {result.data.explanation}
+                    </p>
+                  </div>
+                )}
+
+                {/* ── Checklist ── */}
+                {result.data.checklist?.length > 0 && (
+                  <div
+                    className="rounded-xl px-4 py-4 mb-6"
+                    style={{ background: '#f0fff4', border: '1px solid #a7f3d0' }}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: '#065f46' }}>
+                      ✅ Documents / Actions Checklist
+                    </p>
+                    <ul className="space-y-2">
+                      {result.data.checklist.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm" style={{ color: '#1A1A2E' }}>
+                          <span style={{ color: '#138808', marginTop: 1 }}>✓</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {/* Re-upload button */}
                 <button
                   id="reuploadButton"
                   onClick={reset}
-                  className="mt-6 w-full py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors hover:bg-blue-50"
+                  className="mt-2 w-full py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors hover:bg-blue-50"
                   style={{ borderColor: '#003580', color: '#003580' }}
                 >
                   ↑ Upload Another Document

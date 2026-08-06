@@ -2,15 +2,19 @@ import express from 'express'
 import multer from 'multer'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai'
+import Groq from 'groq-sdk'
+import { createWorker } from 'tesseract.js'
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const pdfParse = require('pdf-parse')
 
 dotenv.config()
 
 /* ──────────────────────────────────────────────
    Validation
 ────────────────────────────────────────────── */
-if (!process.env.GEMINI_API_KEY) {
-  console.error('[PaperPilot] ❌  GEMINI_API_KEY is not set. Create server/.env and add it.')
+if (!process.env.GROQ_API_KEY) {
+  console.error('[PaperPilot] ❌  GROQ_API_KEY is not set. Create server/.env and add it.')
   process.exit(1)
 }
 
@@ -24,7 +28,6 @@ app.use(cors({
   origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
   methods: ['POST', 'GET'],
 }))
-
 app.use(express.json())
 
 /* ──────────────────────────────────────────────
@@ -34,7 +37,7 @@ const ALLOWED_MIMES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_MIMES.includes(file.mimetype)) {
       cb(null, true)
@@ -45,25 +48,52 @@ const upload = multer({
 })
 
 /* ──────────────────────────────────────────────
-   Gemini client
+   Groq client — text model only (no vision)
 ────────────────────────────────────────────── */
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+const TEXT_MODEL = process.env.GROQ_TEXT_MODEL || 'llama-3.3-70b-versatile'
 
-const MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-1.5-pro'
+/* ──────────────────────────────────────────────
+   OCR helper: image buffer → raw text via Tesseract.js
+────────────────────────────────────────────── */
+async function ocrImage(buffer, mimetype) {
+  console.log('[OCR] Starting Tesseract OCR...')
+  const worker = await createWorker('eng', 1, {
+    logger: () => {}, // silence progress logs
+  })
+  try {
+    // Tesseract accepts a Buffer directly
+    const { data: { text } } = await worker.recognize(buffer)
+    console.log(`[OCR] Extracted ${text.trim().length} chars from image`)
+    return text.trim()
+  } finally {
+    await worker.terminate()
+  }
+}
 
-const safetySettings = [
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,       threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-]
+/* ──────────────────────────────────────────────
+   PDF helper: PDF buffer → raw text via pdf-parse
+   Returns empty string on corrupted/unreadable PDFs (doesn't throw)
+────────────────────────────────────────────── */
+async function extractPdfText(buffer) {
+  console.log('[PDF] Extracting text with pdf-parse...')
+  try {
+    const pdfData = await pdfParse(buffer)
+    const text = pdfData.text?.trim() || ''
+    console.log(`[PDF] Extracted ${text.length} chars from PDF`)
+    return text
+  } catch (err) {
+    console.warn(`[PDF] pdf-parse failed (${err.message}) — PDF may be corrupted or image-only`)
+    return '' // caller will handle the empty string
+  }
+}
 
 /* ──────────────────────────────────────────────
    Extraction prompt
 ────────────────────────────────────────────── */
-const EXTRACT_PROMPT = `
-You are a document analysis AI specialising in Indian government certificates.
-Analyse the uploaded document carefully and extract the following information.
+const SYSTEM_PROMPT = `You are a document analysis AI specialising in Indian government certificates.
+You are given raw text extracted (via OCR or PDF parsing) from a scanned or digital Indian government document.
+Analyse the text carefully and extract the following information.
 
 Return ONLY a single valid JSON object — no markdown fences, no prose, no explanation outside the JSON.
 
@@ -84,21 +114,18 @@ The JSON must contain exactly these keys:
 
 Rules:
 - Do NOT include any text before or after the JSON.
-- If a field cannot be found in the document, set its value to null — never guess or fabricate.
-- For 'checklist', include 4–7 practical items relevant to obtaining or using this certificate in India (e.g. "Attach a self-attested copy of Aadhaar card", "Attach latest electricity bill as address proof").
-- For 'explanation', write for a general Indian citizen with limited familiarity with government processes.
-`.trim()
+- If a field cannot be found in the text, set its value to null — never guess or fabricate.
+- For 'checklist', include 4–7 practical items relevant to obtaining or using this certificate in India.
+- For 'explanation', write for a general Indian citizen with limited familiarity with government processes.`
 
 /* ──────────────────────────────────────────────
-   Helper: parse Gemini text → JSON
+   Helper: parse Groq text → JSON
 ────────────────────────────────────────────── */
-function parseGeminiJSON(rawText) {
-  // Strip any accidental markdown fences Gemini might add
+function parseJSON(rawText) {
   const cleaned = rawText
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim()
-
   return JSON.parse(cleaned)
 }
 
@@ -107,45 +134,61 @@ function parseGeminiJSON(rawText) {
 ────────────────────────────────────────────── */
 app.post('/extract', upload.single('file'), async (req, res) => {
   try {
-    /* 1. Validate file presence */
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded. Send a multipart/form-data request with field name "file".' })
+      return res.status(400).json({ error: 'No file uploaded. Use field name "file".' })
     }
 
     const { mimetype, buffer, originalname, size } = req.file
-    console.log(`[/extract] Received: ${originalname} | ${mimetype} | ${(size / 1024).toFixed(1)} KB`)
+    console.log(`\n[/extract] ─── New request ───`)
+    console.log(`[/extract] File: ${originalname} | ${mimetype} | ${(size / 1024).toFixed(1)} KB`)
 
-    /* 2. Build Gemini inline-data part */
-    const filePart = {
-      inlineData: {
-        mimeType: mimetype,
-        data: buffer.toString('base64'),
-      },
+    /* ── Step 1: Extract raw text from the document ── */
+    let rawDocText = ''
+
+    if (mimetype === 'application/pdf') {
+      rawDocText = await extractPdfText(buffer)
+    } else {
+      // image/jpeg, image/png, image/webp → Tesseract OCR
+      rawDocText = await ocrImage(buffer, mimetype)
     }
 
-    /* 3. Call Gemini */
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME, safetySettings })
-
-    const result = await model.generateContent([EXTRACT_PROMPT, filePart])
-    const response = result.response
-    const rawText = response.text()
-
-    console.log(`[/extract] Gemini raw response (first 300 chars): ${rawText.slice(0, 300)}`)
-
-    /* 4. Parse JSON */
-    let extracted
-    try {
-      extracted = parseGeminiJSON(rawText)
-    } catch (parseErr) {
-      console.error('[/extract] JSON parse failed:', parseErr.message)
-      console.error('[/extract] Raw text was:', rawText)
-      return res.status(502).json({
-        error: 'Gemini returned a non-JSON response. The document may be unreadable or unsupported.',
-        rawResponse: rawText,
+    if (!rawDocText || rawDocText.length < 15) {
+      return res.status(422).json({
+        error: mimetype === 'application/pdf'
+          ? 'Could not extract text from this PDF. It may be a scanned image, password-protected, or corrupted. Please try uploading a JPG/PNG photo of the document instead.'
+          : 'Could not extract readable text from this image. Please ensure the image is clear and well-lit.',
       })
     }
 
-    /* 5. Ensure all expected keys exist (fill missing with null) */
+    /* ── Step 2: Send extracted text to Groq Llama for field extraction ── */
+    console.log(`[/extract] Sending ${rawDocText.length} chars to Groq (${TEXT_MODEL})...`)
+
+    const completion = await groq.chat.completions.create({
+      model: TEXT_MODEL,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user',   content: `Here is the raw text extracted from the document:\n\n${rawDocText}` },
+      ],
+      temperature: 0.1,
+      max_tokens: 1024,
+    })
+
+    const groqRaw = completion.choices[0]?.message?.content || ''
+    console.log(`[/extract] Groq response (first 300 chars): ${groqRaw.slice(0, 300)}`)
+
+    /* ── Step 3: Parse JSON ── */
+    let extracted
+    try {
+      extracted = parseJSON(groqRaw)
+    } catch (parseErr) {
+      console.error('[/extract] JSON parse failed:', parseErr.message)
+      return res.status(502).json({
+        error: 'AI returned a non-JSON response.',
+        rawResponse: groqRaw,
+      })
+    }
+
+    /* ── Step 4: Ensure all keys present ── */
     const REQUIRED_KEYS = [
       'applicantName', 'fatherOrHusbandName', 'address', 'dateOfBirth',
       'annualIncome', 'occupation', 'purposeOfCertificate', 'aadhaarNumber',
@@ -156,26 +199,22 @@ app.post('/extract', upload.single('file'), async (req, res) => {
     }
     if (!Array.isArray(extracted.checklist)) extracted.checklist = []
 
-    /* 6. Return */
-    console.log(`[/extract] ✅  Extraction successful for: ${originalname}`)
+    console.log(`[/extract] ✅ Extraction complete for: ${originalname}`)
     return res.status(200).json({
       success: true,
       fileName: originalname,
       fileSize: size,
-      model: MODEL_NAME,
+      model: TEXT_MODEL,
       data: extracted,
     })
 
   } catch (err) {
-    /* Multer file-filter error */
     if (err.message?.startsWith('Unsupported file type')) {
       return res.status(415).json({ error: err.message })
     }
-    /* Multer size error */
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({ error: 'File too large. Maximum allowed size is 10 MB.' })
     }
-
     console.error('[/extract] Unexpected error:', err)
     return res.status(500).json({ error: 'Internal server error.', detail: err.message })
   }
@@ -185,7 +224,7 @@ app.post('/extract', upload.single('file'), async (req, res) => {
    Health check
 ────────────────────────────────────────────── */
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', model: MODEL_NAME, timestamp: new Date().toISOString() })
+  res.json({ status: 'ok', model: TEXT_MODEL, ocr: 'tesseract.js', timestamp: new Date().toISOString() })
 })
 
 /* ──────────────────────────────────────────────
@@ -193,6 +232,7 @@ app.get('/health', (_req, res) => {
 ────────────────────────────────────────────── */
 app.listen(PORT, () => {
   console.log(`\n🚀 PaperPilot server running on http://localhost:${PORT}`)
-  console.log(`   Model : ${MODEL_NAME}`)
+  console.log(`   Model : ${TEXT_MODEL}`)
+  console.log(`   OCR   : Tesseract.js (images) + pdf-parse (PDFs)`)
   console.log(`   Health: http://localhost:${PORT}/health\n`)
 })

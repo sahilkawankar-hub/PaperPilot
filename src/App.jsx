@@ -1,9 +1,20 @@
 import { useState, useRef } from 'react'
 import UploadPage from './UploadPage.jsx'
+import ConfirmPage from './ConfirmPage.jsx'
 
 /* ─── Root App shell ─── */
 export default function App() {
   const [page, setPage] = useState('form')
+  const [extractedResult, setExtractedResult] = useState(null)
+
+  const handleExtracted = (result) => {
+    setExtractedResult(result)
+    setPage('confirm')
+  }
+
+  const handleBackFromConfirm = () => {
+    setPage('upload')
+  }
 
   return (
     <div>
@@ -32,13 +43,21 @@ export default function App() {
           {/* Nav links */}
           <div className="flex items-center gap-1">
             <NavLink id="navFormLink" label="Apply for Certificate" active={page === 'form'} onClick={() => setPage('form')} />
-            <NavLink id="navUploadLink" label="Upload Document" active={page === 'upload'} onClick={() => setPage('upload')} />
+            <NavLink id="navUploadLink" label="Upload Document" active={page === 'upload' || page === 'confirm'} onClick={() => setPage('upload')} />
           </div>
         </div>
       </nav>
 
       {/* ── Page content ── */}
-      {page === 'form' ? <IncomeCertificateForm /> : <UploadPage />}
+      {page === 'form' && <IncomeCertificateForm />}
+      {page === 'upload' && <UploadPage onExtracted={handleExtracted} />}
+      {page === 'confirm' && (
+        <ConfirmPage
+          extractedResult={extractedResult}
+          onBack={handleBackFromConfirm}
+          onSubmitSuccess={() => setPage('form')}
+        />
+      )}
     </div>
   )
 }
