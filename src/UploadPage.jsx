@@ -7,6 +7,7 @@ async function analyzeDocument(file) {
 
   const response = await fetch('http://localhost:3001/extract', {
     method: 'POST',
+    credentials: 'include',
     body: formData,
   })
 
@@ -16,7 +17,7 @@ async function analyzeDocument(file) {
     throw new Error(json.error || 'Extraction failed. Please try again.')
   }
 
-  return json // { success, fileName, fileSize, model, data: { ... } }
+  return json // { success, sessionId, fileName, fileSize, model, data: { ... } }
 }
 
 /* ── File type helpers ── */

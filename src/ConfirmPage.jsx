@@ -13,7 +13,7 @@ const CONFIRM_FIELDS = [
 ]
 
 export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }) {
-  const { data, explanation, checklist, fileName, model } = extractedResult ?? {}
+  const { data, explanation, checklist, fileName, model, sessionId } = extractedResult ?? {}
 
   /* ── Field values (editable) ── */
   const [values, setValues] = useState(() => {
@@ -38,6 +38,18 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
   const confirmAll = () => {
     const next = !allConfirmed
     setConfirmed(Object.fromEntries(CONFIRM_FIELDS.map(({ key }) => [key, next])))
+    if (next && sessionId) {
+      // Sync confirmed values to session storage
+      fetch('http://localhost:3001/session/confirm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-ID': sessionId,
+        },
+        credentials: 'include',
+        body: JSON.stringify({ sessionId, data: values }),
+      }).catch(err => console.warn('Session sync failed:', err))
+    }
   }
 
   const handleChange = (key, value) => {
@@ -64,10 +76,28 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
     window.scrollTo({ top: 0, behavior: 'smooth' })
 
     try {
+      // First sync confirmed fields to session store
+      if (sessionId) {
+        await fetch('http://localhost:3001/session/confirm', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': sessionId,
+          },
+          credentials: 'include',
+          body: JSON.stringify({ sessionId, data: values }),
+        })
+      }
+
+      // Execute form fill using session data
       const response = await fetch('http://localhost:3001/fill-form', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({ sessionId, ...values }),
       })
 
       const resData = await response.json()

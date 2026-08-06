@@ -7,6 +7,7 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { fillForm } from './fill-form.mjs'
 import { createWorker } from 'tesseract.js'
+import { randomUUID } from 'node:crypto'
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const pdfParse = require('pdf-parse')
@@ -24,6 +25,47 @@ if (!process.env.GROQ_API_KEY) {
 }
 
 /* ──────────────────────────────────────────────
+   In-Memory Session Storage (Plain JS Object/Map)
+────────────────────────────────────────────── */
+const sessions = new Map()
+
+function parseCookies(cookieHeader) {
+  const list = {}
+  if (!cookieHeader) return list
+  cookieHeader.split(';').forEach((cookie) => {
+    let [name, ...rest] = cookie.split('=')
+    name = name?.trim()
+    if (!name) return
+    const val = rest.join('=').trim()
+    list[name] = decodeURIComponent(val)
+  })
+  return list
+}
+
+function getOrCreateSession(req, res, createNew = false) {
+  const cookies = parseCookies(req.headers.cookie)
+  let sessionId = req.headers['x-session-id'] || cookies['sessionId'] || req.query?.sessionId || req.body?.sessionId
+
+  if (createNew || !sessionId || !sessions.has(sessionId)) {
+    sessionId = `sess_${randomUUID()}`
+    sessions.set(sessionId, {
+      id: sessionId,
+      createdAt: new Date().toISOString(),
+      extractedData: null,
+      confirmedData: null,
+      fileName: null,
+      screenshotUrl: null,
+    })
+  }
+
+  const session = sessions.get(sessionId)
+  res.setHeader('X-Session-ID', sessionId)
+  res.setHeader('Set-Cookie', `sessionId=${sessionId}; Path=/; HttpOnly; SameSite=Lax`)
+
+  return { sessionId, session }
+}
+
+/* ──────────────────────────────────────────────
    Express setup
 ────────────────────────────────────────────── */
 const app = express()
@@ -31,7 +73,9 @@ const PORT = process.env.PORT || 3001
 
 app.use(cors({
   origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
-  methods: ['POST', 'GET'],
+  credentials: true,
+  exposedHeaders: ['X-Session-ID'],
+  methods: ['POST', 'GET', 'PUT', 'DELETE'],
 }))
 app.use(express.json())
 
@@ -207,9 +251,15 @@ app.post('/extract', upload.single('file'), async (req, res) => {
     }
     if (!Array.isArray(extracted.checklist)) extracted.checklist = []
 
-    console.log(`[/extract] ✅ Extraction complete for: ${originalname}`)
+    /* ── Step 5: Save in-memory session ── */
+    const { sessionId, session } = getOrCreateSession(req, res, true)
+    session.extractedData = extracted
+    session.fileName = originalname
+
+    console.log(`[/extract] ✅ Extraction complete for: ${originalname} (Session: ${sessionId})`)
     return res.status(200).json({
       success: true,
+      sessionId,
       fileName: originalname,
       fileSize: size,
       model: TEXT_MODEL,
@@ -229,16 +279,53 @@ app.post('/extract', upload.single('file'), async (req, res) => {
 })
 
 /* ──────────────────────────────────────────────
+   GET /session
+   Retrieves current in-memory session data
+────────────────────────────────────────────── */
+app.get('/session', (req, res) => {
+  const { sessionId, session } = getOrCreateSession(req, res, false)
+  return res.json({
+    success: true,
+    sessionId,
+    session,
+  })
+})
+
+/* ──────────────────────────────────────────────
+   POST /session/confirm
+   Saves confirmed JSON fields into the in-memory session
+────────────────────────────────────────────── */
+app.post('/session/confirm', (req, res) => {
+  const { sessionId, session } = getOrCreateSession(req, res, false)
+  const confirmedData = req.body?.data || req.body
+
+  if (!confirmedData || typeof confirmedData !== 'object') {
+    return res.status(400).json({ error: 'Body must be a JSON object with confirmed field values.' })
+  }
+
+  session.confirmedData = { ...session.confirmedData, ...confirmedData }
+  console.log(`[/session/confirm] Updated confirmed fields for Session: ${sessionId}`)
+
+  return res.json({
+    success: true,
+    sessionId,
+    confirmedData: session.confirmedData,
+  })
+})
+
+/* ──────────────────────────────────────────────
    POST /fill-form
-   Body: JSON with keys applicantName, fatherOrHusbandName, address,
-         dateOfBirth, annualIncome, occupation, purposeOfCertificate, aadhaarNumber
-   Returns: { success, screenshotUrl, screenshotFile, filled, skipped }
+   Executes Playwright form filling using session data (or provided body)
 ────────────────────────────────────────────── */
 app.post('/fill-form', async (req, res) => {
-  const data = req.body
+  const { sessionId, session } = getOrCreateSession(req, res, false)
 
-  if (!data || typeof data !== 'object') {
-    return res.status(400).json({ error: 'Request body must be a JSON object with field values.' })
+  // Merge order: session.extractedData -> session.confirmedData -> req.body
+  const bodyData = req.body && typeof req.body === 'object' ? req.body : {}
+  const data = {
+    ...(session.extractedData || {}),
+    ...(session.confirmedData || {}),
+    ...bodyData,
   }
 
   const ALLOWED_KEYS = [
@@ -247,16 +334,22 @@ app.post('/fill-form', async (req, res) => {
   ]
   const hasAny = ALLOWED_KEYS.some((k) => data[k])
   if (!hasAny) {
-    return res.status(400).json({ error: 'Provide at least one field value to fill.' })
+    return res.status(400).json({
+      error: `No field values found for session (${sessionId}) or request body. Please upload/confirm fields first.`,
+    })
   }
 
-  console.log(`[/fill-form] Starting Playwright fill for ${Object.keys(data).length} keys...`)
+  console.log(`[/fill-form] Starting Playwright fill for Session (${sessionId}) with ${Object.keys(data).length} fields...`)
 
   try {
     const result = await fillForm(data)
+    session.screenshotUrl = `http://localhost:${PORT}${result.screenshotUrl}`
+    session.filledAt = new Date().toISOString()
+
     return res.status(200).json({
       success: true,
-      screenshotUrl: `http://localhost:${PORT}${result.screenshotUrl}`,
+      sessionId,
+      screenshotUrl: session.screenshotUrl,
       screenshotFile: result.screenshotFile,
       screenshotPath: result.screenshotPath,
       filled: result.filled,
