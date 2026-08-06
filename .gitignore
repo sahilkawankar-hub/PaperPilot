@@ -30,4 +30,6 @@ server/.env
 .env.*.local
 *.traineddata
 server/*.traineddata
+server/screenshots/*.png
+!server/screenshots/.gitkeep
 

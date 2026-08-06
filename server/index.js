@@ -3,10 +3,15 @@ import multer from 'multer'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import Groq from 'groq-sdk'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { fillForm } from './fill-form.mjs'
 import { createWorker } from 'tesseract.js'
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const pdfParse = require('pdf-parse')
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 dotenv.config()
 
@@ -29,6 +34,9 @@ app.use(cors({
   methods: ['POST', 'GET'],
 }))
 app.use(express.json())
+
+// Serve generated screenshots statically at /screenshots/<filename>
+app.use('/screenshots', express.static(join(__dirname, 'screenshots')))
 
 /* ──────────────────────────────────────────────
    Multer – memory storage, 10 MB limit
@@ -217,6 +225,46 @@ app.post('/extract', upload.single('file'), async (req, res) => {
     }
     console.error('[/extract] Unexpected error:', err)
     return res.status(500).json({ error: 'Internal server error.', detail: err.message })
+  }
+})
+
+/* ──────────────────────────────────────────────
+   POST /fill-form
+   Body: JSON with keys applicantName, fatherOrHusbandName, address,
+         dateOfBirth, annualIncome, occupation, purposeOfCertificate, aadhaarNumber
+   Returns: { success, screenshotUrl, screenshotFile, filled, skipped }
+────────────────────────────────────────────── */
+app.post('/fill-form', async (req, res) => {
+  const data = req.body
+
+  if (!data || typeof data !== 'object') {
+    return res.status(400).json({ error: 'Request body must be a JSON object with field values.' })
+  }
+
+  const ALLOWED_KEYS = [
+    'applicantName', 'fatherOrHusbandName', 'address', 'dateOfBirth',
+    'annualIncome', 'occupation', 'purposeOfCertificate', 'aadhaarNumber',
+  ]
+  const hasAny = ALLOWED_KEYS.some((k) => data[k])
+  if (!hasAny) {
+    return res.status(400).json({ error: 'Provide at least one field value to fill.' })
+  }
+
+  console.log(`[/fill-form] Starting Playwright fill for ${Object.keys(data).length} keys...`)
+
+  try {
+    const result = await fillForm(data)
+    return res.status(200).json({
+      success: true,
+      screenshotUrl: `http://localhost:${PORT}${result.screenshotUrl}`,
+      screenshotFile: result.screenshotFile,
+      screenshotPath: result.screenshotPath,
+      filled: result.filled,
+      skipped: result.skipped,
+    })
+  } catch (err) {
+    console.error('[/fill-form] Playwright error:', err.message)
+    return res.status(500).json({ error: 'Form fill failed.', detail: err.message })
   }
 })
 
