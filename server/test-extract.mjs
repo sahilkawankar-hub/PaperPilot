@@ -1,28 +1,45 @@
-// Quick test script — run with: node test-extract.mjs
-import { createReadStream, statSync } from 'fs'
-import { basename } from 'path'
+// Quick test script — run with: node test-extract.mjs [path-to-file]
+import { createReadStream, statSync, existsSync } from 'fs'
+import { basename, extname, resolve } from 'path'
 import http from 'http'
 
-const PDF_PATH = 'D:\\All Projects\\Project Vikasit PaperPilot\\income certificate.pdf'
+const defaultPath = resolve('../samples/sample_income_certificate.jpg')
+const inputPath = process.argv[2] ? resolve(process.argv[2]) : defaultPath
+
+if (!existsSync(inputPath)) {
+  console.error(`❌ File not found: ${inputPath}`)
+  process.exit(1)
+}
+
+const ext = extname(inputPath).toLowerCase()
+const mimeTypes = {
+  '.pdf': 'application/pdf',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+}
+const mimeType = mimeTypes[ext] || 'application/octet-stream'
+
 const HOST = 'localhost'
 const PORT = 3001
 const ENDPOINT = '/extract'
 
 // ── Build a multipart/form-data body manually ──
 const BOUNDARY = '----PaperPilotBoundary' + Date.now()
-const filename  = basename(PDF_PATH)
-const fileStats = statSync(PDF_PATH)
+const filename  = basename(inputPath)
+const fileStats = statSync(inputPath)
 
 const preamble = Buffer.from(
   `--${BOUNDARY}\r\n` +
   `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
-  `Content-Type: application/pdf\r\n` +
+  `Content-Type: ${mimeType}\r\n` +
   `\r\n`
 )
 const epilogue = Buffer.from(`\r\n--${BOUNDARY}--\r\n`)
 const totalLength = preamble.length + fileStats.size + epilogue.length
 
-console.log(`\n📤 Sending: ${filename} (${(fileStats.size / 1024).toFixed(1)} KB)`)
+console.log(`\n📤 Sending: ${filename} (${(fileStats.size / 1024).toFixed(1)} KB) [${mimeType}]`)
 console.log(`   → POST http://${HOST}:${PORT}${ENDPOINT}\n`)
 
 const req = http.request({
@@ -57,7 +74,7 @@ req.on('error', err => {
 
 // Stream: preamble → file → epilogue
 req.write(preamble)
-const fileStream = createReadStream(PDF_PATH)
+const fileStream = createReadStream(inputPath)
 fileStream.on('data', chunk => req.write(chunk))
 fileStream.on('end', () => {
   req.write(epilogue)
