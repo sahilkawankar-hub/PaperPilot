@@ -71,8 +71,17 @@ function getOrCreateSession(req, res, createNew = false) {
 const app = express()
 const PORT = process.env.PORT || 3001
 
+const ALLOWED_ORIGINS = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map(o => o.trim())
+
 app.use(cors({
-  origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g., server-to-server, curl)
+    if (!origin) return callback(null, true)
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true)
+    callback(new Error(`CORS: origin "${origin}" not allowed`))
+  },
   credentials: true,
   exposedHeaders: ['X-Session-ID'],
   methods: ['POST', 'GET', 'PUT', 'DELETE'],
