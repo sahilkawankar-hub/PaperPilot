@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+
 /* ── The 8 fields to confirm ── */
 const CONFIRM_FIELDS = [
   { key: 'applicantName',        label: 'Applicant Name',              type: 'text',     colSpan: 2, placeholder: 'Full name as per official records' },
@@ -40,7 +42,7 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
     setConfirmed(Object.fromEntries(CONFIRM_FIELDS.map(({ key }) => [key, next])))
     if (next && sessionId) {
       // Sync confirmed values to session storage
-      fetch('http://localhost:3001/session/confirm', {
+      fetch(`${API_BASE}/session/confirm`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -78,7 +80,7 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
     try {
       // First sync confirmed fields to session store
       if (sessionId) {
-        await fetch('http://localhost:3001/session/confirm', {
+        await fetch(`${API_BASE}/session/confirm`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -90,7 +92,7 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
       }
 
       // Execute form fill using session data
-      const response = await fetch('http://localhost:3001/fill-form', {
+      const response = await fetch(`${API_BASE}/fill-form`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

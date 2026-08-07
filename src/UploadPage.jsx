@@ -1,11 +1,13 @@
 import { useState, useRef } from 'react'
 
 /* ── Real backend call ── */
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+
 async function analyzeDocument(file) {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await fetch('http://localhost:3001/extract', {
+  const response = await fetch(`${API_BASE}/extract`, {
     method: 'POST',
     credentials: 'include',
     body: formData,
