@@ -112,7 +112,10 @@ async function findBestOption(page, selectId, rawValue) {
    Main exported function
 ────────────────────────────────────────────── */
 export async function fillForm(data) {
-  const browser = await chromium.launch({ headless: true })
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  })
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
   })

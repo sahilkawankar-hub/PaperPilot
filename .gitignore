@@ -23,13 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 
-# Server secrets & cached data – never commit API keys or large OCR training data
+# Server secrets – never commit API keys
 server/.env
 .env
 .env.local
 .env.*.local
-*.traineddata
-server/*.traineddata
 server/screenshots/*.png
 !server/screenshots/.gitkeep
 

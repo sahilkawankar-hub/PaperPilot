@@ -71,6 +71,9 @@ function getOrCreateSession(req, res, createNew = false) {
 const app = express()
 const PORT = process.env.PORT || 3001
 
+// On Render the public URL is injected as RENDER_EXTERNAL_URL; fall back to localhost for dev
+const BASE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`
+
 const ALLOWED_ORIGINS = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map(o => o.trim())
@@ -352,7 +355,7 @@ app.post('/fill-form', async (req, res) => {
 
   try {
     const result = await fillForm(data)
-    session.screenshotUrl = `http://localhost:${PORT}${result.screenshotUrl}`
+    session.screenshotUrl = `${BASE_URL}${result.screenshotUrl}`
     session.filledAt = new Date().toISOString()
 
     return res.status(200).json({
