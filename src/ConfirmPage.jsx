@@ -66,9 +66,6 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
     setConfirmed(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-
   const handleSubmit = () => {
     if (!allConfirmed) return
     setSubmitting(true)
