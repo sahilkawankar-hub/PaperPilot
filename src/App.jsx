@@ -4,7 +4,7 @@ import ConfirmPage from './ConfirmPage.jsx'
 
 /* ─── Root App shell ─── */
 export default function App() {
-  const [page, setPage] = useState('form')
+  const [page, setPage] = useState('home')
   const [extractedResult, setExtractedResult] = useState(null)
 
   const handleExtracted = (result) => {
@@ -19,38 +19,36 @@ export default function App() {
   return (
     <div>
       {/* ── Global Nav ── */}
-      <nav
-        style={{
-          background: '#003580',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-        }}
-      >
-        <div className="mx-auto max-w-5xl px-6 flex items-center justify-between h-14">
-          {/* Logo / brand */}
+      <nav style={{ background: '#fff', borderBottom: '1px solid #E2E8F0', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <button
             id="navBrandLogo"
-            onClick={() => setPage('form')}
-            className="flex items-center gap-2 text-white font-bold text-lg"
-            style={{ fontFamily: 'EB Garamond, serif', background: 'none', border: 'none', cursor: 'pointer' }}
+            onClick={() => setPage('home')}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer' }}
           >
-            <span style={{ color: '#FF6700' }}>Paper</span>
-            <span style={{ color: '#ffffff' }}>Pilot</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A365D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#1A365D', letterSpacing: '-0.01em', fontFamily: 'Inter, sans-serif' }}>PaperPilot</span>
           </button>
-
-          {/* Nav links */}
-          <div className="flex items-center gap-1">
-            <NavLink id="navFormLink" label="Apply for Certificate" active={page === 'form'} onClick={() => setPage('form')} />
-            <NavLink id="navUploadLink" label="Upload Document" active={page === 'upload' || page === 'confirm'} onClick={() => setPage('upload')} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <NavLink id="navHomeLink"   label="Home"                active={page === 'home'}                          onClick={() => setPage('home')} />
+            <NavLink id="navFormLink"   label="Apply for Certificate" active={page === 'form'}                        onClick={() => setPage('form')} />
+            <NavLink id="navUploadLink" label="Upload Document"     active={page === 'upload' || page === 'confirm'}  onClick={() => setPage('upload')} />
           </div>
+          <button
+            onClick={() => setPage('upload')}
+            style={{ background: '#1A365D', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
+          >
+            Get Started
+          </button>
         </div>
       </nav>
 
       {/* ── Page content ── */}
-      {page === 'form' && <IncomeCertificateForm />}
-      {page === 'upload' && <UploadPage onExtracted={handleExtracted} />}
+      {page === 'home'    && <HomePage onStart={() => setPage('upload')} />}
+      {page === 'form'    && <IncomeCertificateForm />}
+      {page === 'upload'  && <UploadPage onExtracted={handleExtracted} />}
       {page === 'confirm' && (
         <ConfirmPage
           extractedResult={extractedResult}
@@ -67,16 +65,139 @@ function NavLink({ id, label, active, onClick }) {
     <button
       id={id}
       onClick={onClick}
-      className="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
       style={{
-        background: active ? 'rgba(255,255,255,0.15)' : 'transparent',
-        color: active ? '#ffffff' : 'rgba(255,255,255,0.65)',
-        border: 'none',
-        cursor: 'pointer',
+        padding: '6px 14px', borderRadius: 8, fontSize: 14, fontWeight: active ? 600 : 400,
+        color: active ? '#1A365D' : '#43474e', background: active ? '#EEF2F8' : 'transparent',
+        border: 'none', cursor: 'pointer', fontFamily: 'Inter, sans-serif',
       }}
     >
       {label}
     </button>
+  )
+}
+
+/* ════════════════════════════════════════
+   Home / Landing Page
+════════════════════════════════════════ */
+function HomePage({ onStart }) {
+  const steps = [
+    { icon: '📄', title: 'Upload Your Document', desc: 'Drop any ID proof, Aadhaar card, or income document — PDF, JPG or PNG.' },
+    { icon: '🤖', title: 'AI Reads & Extracts', desc: 'Our AI agent reads the document and pulls out all 8 required fields in seconds.' },
+    { icon: '✅', title: 'You Approve Every Field', desc: 'Review each extracted value. Toggle to approve, edit if needed. Nothing gets submitted without you.' },
+    { icon: '⚡', title: 'Auto-Fill the Form', desc: 'With one click, PaperPilot fills the government Income Certificate form automatically.' },
+  ]
+
+  const features = [
+    { icon: '🔒', title: 'Nothing stored', desc: 'Your data lives only in this browser session and is wiped the moment you close.' },
+    { icon: '🇮🇳', title: 'Built for India', desc: 'Designed specifically for Indian government forms, Aadhaar formats, and state portals.' },
+    { icon: '⚡', title: 'Seconds not hours', desc: 'What used to take 45 minutes of form-filling now takes under 60 seconds.' },
+  ]
+
+  return (
+    <div style={{ fontFamily: 'Inter, sans-serif', background: '#fff' }}>
+
+      {/* ── Hero ── */}
+      <div style={{ background: 'linear-gradient(160deg, #EEF2F8 0%, #F7FAFC 60%, #E8F4F0 100%)', padding: '80px 24px 64px', textAlign: 'center' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 9999, padding: '6px 16px', fontSize: 13, fontWeight: 600, color: '#13696a', marginBottom: 28, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#13696a', display: 'inline-block' }} />
+          AI-Powered Government Form Assistant
+        </div>
+        <h1 style={{ fontSize: 52, fontWeight: 800, color: '#111c2c', maxWidth: 720, margin: '0 auto 20px', lineHeight: 1.12, letterSpacing: '-0.03em' }}>
+          Government paperwork,<br />
+          <span style={{ color: '#1A365D' }}>done in 60 seconds</span>
+        </h1>
+        <p style={{ fontSize: 18, color: '#43474e', maxWidth: 520, margin: '0 auto 40px', lineHeight: 1.65 }}>
+          Upload your document. PaperPilot reads it, extracts every field, and fills your Income Certificate application — automatically.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <button
+            id="heroStartBtn"
+            onClick={onStart}
+            style={{ background: '#1A365D', color: '#fff', border: 'none', borderRadius: 12, padding: '14px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', boxShadow: '0 8px 24px rgba(26,54,93,0.25)', display: 'flex', alignItems: 'center', gap: 8 }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#0f2238' }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#1A365D' }}
+          >
+            Try it now — it's free
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+            </svg>
+          </button>
+          <div style={{ fontSize: 13, color: '#74777f', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#13696a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            No sign up · No data stored · Free
+          </div>
+        </div>
+      </div>
+
+      {/* ── How it works ── */}
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '72px 24px' }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#13696a', letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'center', marginBottom: 12 }}>How it works</p>
+        <h2 style={{ fontSize: 34, fontWeight: 800, color: '#111c2c', textAlign: 'center', margin: '0 0 52px', letterSpacing: '-0.02em' }}>
+          Four steps, zero hassle
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24 }}>
+          {steps.map((s, i) => (
+            <div key={i} style={{ background: '#F7FAFC', border: '1px solid #E2E8F0', borderRadius: 16, padding: '28px 24px', position: 'relative' }}>
+              <div style={{ position: 'absolute', top: 20, right: 20, width: 28, height: 28, borderRadius: '50%', background: '#1A365D', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>{i + 1}</div>
+              <div style={{ fontSize: 32, marginBottom: 14 }}>{s.icon}</div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111c2c', margin: '0 0 8px' }}>{s.title}</h3>
+              <p style={{ fontSize: 14, color: '#43474e', margin: 0, lineHeight: 1.6 }}>{s.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Features ── */}
+      <div style={{ background: '#1A365D', padding: '64px 24px' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
+          <h2 style={{ fontSize: 30, fontWeight: 800, color: '#fff', textAlign: 'center', margin: '0 0 44px', letterSpacing: '-0.02em' }}>
+            Built with trust at the core
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 24 }}>
+            {features.map((f, i) => (
+              <div key={i} style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16, padding: '28px 24px' }}>
+                <div style={{ fontSize: 28, marginBottom: 12 }}>{f.icon}</div>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#fff', margin: '0 0 8px' }}>{f.title}</h3>
+                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)', margin: 0, lineHeight: 1.6 }}>{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── CTA banner ── */}
+      <div style={{ padding: '72px 24px', textAlign: 'center', background: '#F7FAFC' }}>
+        <h2 style={{ fontSize: 36, fontWeight: 800, color: '#111c2c', margin: '0 0 16px', letterSpacing: '-0.02em' }}>
+          Ready to fill your application?
+        </h2>
+        <p style={{ fontSize: 16, color: '#43474e', margin: '0 0 36px' }}>
+          Upload a document and let PaperPilot handle the rest.
+        </p>
+        <button
+          onClick={onStart}
+          style={{ background: '#13696a', color: '#fff', border: 'none', borderRadius: 12, padding: '14px 32px', fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', boxShadow: '0 8px 24px rgba(19,105,106,0.25)' }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#0d4f50' }}
+          onMouseLeave={e => { e.currentTarget.style.background = '#13696a' }}
+        >
+          Upload Document →
+        </button>
+      </div>
+
+      {/* ── Footer ── */}
+      <footer style={{ background: '#fff', borderTop: '1px solid #E2E8F0', padding: '20px 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#1A365D' }}>PaperPilot</span>
+          <span style={{ fontSize: 12, color: '#74777f', marginLeft: 12 }}>© 2024 PaperPilot AI. Secure Government Paperwork Assistant.</span>
+        </div>
+        <div style={{ display: 'flex', gap: 24 }}>
+          {['Privacy Policy', 'Terms of Service', 'Help Center', 'Contact Support'].map(l => (
+            <a key={l} href="#" style={{ fontSize: 13, color: '#43474e', textDecoration: 'none' }}>{l}</a>
+          ))}
+        </div>
+      </footer>
+    </div>
   )
 }
 

@@ -1,447 +1,590 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
-/* ── The 8 fields to confirm ── */
 const CONFIRM_FIELDS = [
-  { key: 'applicantName',        label: 'Applicant Name',              type: 'text',     colSpan: 2, placeholder: 'Full name as per official records' },
-  { key: 'fatherOrHusbandName',  label: "Father's / Husband's Name",   type: 'text',     colSpan: 2, placeholder: 'Full name of father or husband' },
-  { key: 'dateOfBirth',          label: 'Date of Birth',               type: 'text',     colSpan: 1, placeholder: 'e.g. 1990-05-12 (YYYY-MM-DD)' },
-  { key: 'aadhaarNumber',        label: 'Aadhaar Number',              type: 'text',     colSpan: 1, placeholder: 'XXXX XXXX XXXX' },
-  { key: 'occupation',           label: 'Occupation',                  type: 'text',     colSpan: 1, placeholder: 'e.g. Farmer, Private Employee' },
-  { key: 'annualIncome',         label: 'Annual Income (₹)',           type: 'text',     colSpan: 1, placeholder: 'e.g. 180000' },
-  { key: 'purposeOfCertificate', label: 'Purpose of Certificate',      type: 'text',     colSpan: 2, placeholder: 'e.g. Scholarship, Medical Assistance' },
-  { key: 'address',              label: 'Residential Address',         type: 'textarea', colSpan: 2, placeholder: 'House No., Street, Village/Town, District, State – PIN Code' },
+  { key: 'applicantName',        label: 'Applicant Name',           type: 'text',     colSpan: 1, placeholder: 'Full name as per official records' },
+  { key: 'fatherOrHusbandName',  label: "Father's Name",            type: 'text',     colSpan: 1, placeholder: 'Full name of father or husband' },
+  { key: 'address',              label: 'Residential Address',      type: 'textarea', colSpan: 2, placeholder: 'House No., Street, Village/Town, District, State' },
+  { key: 'dateOfBirth',          label: 'Date of Birth',            type: 'text',     colSpan: 1, placeholder: 'YYYY-MM-DD' },
+  { key: 'aadhaarNumber',        label: 'Aadhaar Number',           type: 'text',     colSpan: 1, placeholder: 'XXXX XXXX XXXX' },
+  { key: 'occupation',           label: 'Occupation',               type: 'text',     colSpan: 1, placeholder: 'e.g. Farmer, Private Employee' },
+  { key: 'annualIncome',         label: 'Annual Income (Rs.)',      type: 'text',     colSpan: 1, placeholder: 'e.g. 180000' },
+  { key: 'purposeOfCertificate', label: 'Purpose of Certificate',   type: 'text',     colSpan: 2, placeholder: 'e.g. Scholarship, Medical Assistance' },
 ]
 
-export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }) {
-  const { data, explanation, checklist, fileName, model, sessionId } = extractedResult ?? {}
+/* ── Confidence Badge ── */
+function ConfidenceBadge({ hasValue }) {
+  if (hasValue) {
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        background: '#f0fdf4', color: '#166534',
+        border: '1px solid #bbf7d0', borderRadius: 4,
+        padding: '3px 8px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+      }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+        </svg>
+        High Confidence
+      </span>
+    )
+  }
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      background: '#fffbeb', color: '#92400e',
+      border: '1px solid #fde68a', borderRadius: 4,
+      padding: '3px 8px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+    }}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      Please Verify
+    </span>
+  )
+}
 
-  /* ── Field values (editable) ── */
+/* ── Toggle Switch ── */
+function Toggle({ id, checked, onChange }) {
+  return (
+    <div
+      id={id}
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      style={{
+        width: 44, height: 24, borderRadius: 9999, flexShrink: 0,
+        background: checked ? '#13696a' : '#d8e3fa',
+        position: 'relative', cursor: 'pointer',
+        transition: 'background 0.2s ease',
+        boxShadow: checked ? '0 0 0 3px rgba(19,105,106,0.15)' : 'none',
+      }}
+    >
+      <div style={{
+        width: 18, height: 18, borderRadius: '50%', background: '#fff',
+        position: 'absolute', top: 3,
+        left: checked ? 23 : 3,
+        transition: 'left 0.2s ease',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+      }} />
+    </div>
+  )
+}
+
+/* ── Autofill in Progress Screen ── */
+const FORM_FIELDS = [
+  { key: 'applicantName',        label: 'Applicant Name',          col: 'half' },
+  { key: 'fatherOrHusbandName',  label: "Father's/Husband's Name", col: 'half' },
+  { key: 'address',              label: 'Address',                  col: 'full' },
+  { key: 'dateOfBirth',          label: 'Date of Birth',           col: 'third' },
+  { key: 'annualIncome',         label: 'Annual Income (₹)',       col: 'third' },
+  { key: 'occupation',           label: 'Occupation',              col: 'third' },
+  { key: 'purposeOfCertificate', label: 'Purpose of Certificate',  col: 'full' },
+  { key: 'aadhaarNumber',        label: 'Aadhaar Number',          col: 'full' },
+]
+
+function LoadingScreen({ values }) {
+  const [doneKeys, setDoneKeys] = useState(new Set())
+  const [activeIdx, setActiveIdx] = useState(0)
+  const [typedChars, setTypedChars] = useState(0)
+  const formId = useRef('INC-' + new Date().getFullYear() + '-' + (Math.floor(Math.random() * 9000) + 1000))
+
+  const activeField = FORM_FIELDS[activeIdx]
+  const activeValue = activeField ? (values?.[activeField.key] || '') : ''
+
+  useEffect(() => {
+    if (!activeField) return
+    if (typedChars < activeValue.length) {
+      const t = setTimeout(() => setTypedChars(n => n + 1), 8)
+      return () => clearTimeout(t)
+    } else {
+      const t = setTimeout(() => {
+        if (activeValue.length > 0) {
+          setDoneKeys(prev => new Set([...prev, activeField.key]))
+        }
+        setActiveIdx(i => i + 1)
+        setTypedChars(0)
+      }, activeValue.length > 0 ? 60 : 20)
+      return () => clearTimeout(t)
+    }
+  }, [activeIdx, typedChars, activeField, activeValue])
+
+  const getDisplay = (key, idx) => {
+    if (doneKeys.has(key)) return values?.[key] || ''
+    if (idx === activeIdx) return activeValue.slice(0, typedChars)
+    return ''
+  }
+  const isDone = (key) => doneKeys.has(key)
+  const isActive = (idx) => idx === activeIdx && activeValue.length > 0
+
+  const colStyle = (col) => {
+    if (col === 'full') return { gridColumn: '1 / -1' }
+    if (col === 'half') return { gridColumn: 'span 3' }
+    return { gridColumn: 'span 2' }
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#F7FAFC', fontFamily: 'Inter, sans-serif', display: 'flex', flexDirection: 'column' }}>
+
+      {/* Nav */}
+      <nav style={{ background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '0 40px', height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A365D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#1A365D' }}>PaperPilot</span>
+        </div>
+        <div style={{ display: 'flex', gap: 28 }}>
+          {['Applications', 'Dashboard', 'Documents'].map((item, i) => (
+            <span key={item} style={{ fontSize: 14, fontWeight: i === 0 ? 600 : 400, color: i === 0 ? '#13696a' : '#43474e', paddingBottom: 2, borderBottom: i === 0 ? '2px solid #13696a' : 'none', cursor: 'pointer' }}>{item}</span>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 14 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#43474e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#43474e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+      </nav>
+
+      {/* Main content */}
+      <div style={{ flex: 1, maxWidth: 680, width: '100%', margin: '0 auto', padding: '32px 24px 80px' }}>
+
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div>
+            <h1 style={{ fontSize: 17, fontWeight: 600, color: '#111c2c', margin: '0 0 4px' }}>Income Certificate Application</h1>
+            <p style={{ fontSize: 13, color: '#74777f', margin: 0 }}>Form ID: {formId.current}</p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#13696a', color: '#fff', borderRadius: 9999, padding: '7px 14px', fontSize: 13, fontWeight: 600, boxShadow: '0 4px 12px rgba(19,105,106,0.25)' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1.4s linear infinite' }}>
+              <path d="M21 12a9 9 0 11-6.219-8.56" />
+            </svg>
+            Agent: Filling your form
+          </div>
+        </div>
+
+        {/* Form card */}
+        <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, padding: '28px 28px', boxShadow: '0 2px 12px rgba(26,54,93,0.04)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '20px 16px' }}>
+            {FORM_FIELDS.map(({ key, label, col }, idx) => {
+              const done = isDone(key)
+              const active = isActive(idx)
+              const display = getDisplay(key, idx)
+              const borderCol = active ? '#13696a' : (done ? '#89d3d4' : '#E2E8F0')
+              return (
+                <div key={key} style={colStyle(col)}>
+                  <label style={{ fontSize: 12, fontWeight: 500, color: '#74777f', display: 'block', marginBottom: 6 }}>{label}</label>
+                  <div style={{ position: 'relative' }}>
+                    <div style={{
+                      width: '100%', minHeight: col === 'full' && key === 'address' ? 44 : 40,
+                      border: '1.5px solid ' + borderCol,
+                      borderRadius: 8, padding: '9px 36px 9px 12px',
+                      fontSize: 14, color: '#111c2c', background: '#fff',
+                      boxSizing: 'border-box', lineHeight: '22px',
+                      transition: 'border-color 0.25s',
+                      boxShadow: active ? '0 0 0 3px rgba(19,105,106,0.1)' : 'none',
+                    }}>
+                      {display}
+                      {active && (
+                        <span style={{ display: 'inline-block', width: 2, height: 16, background: '#13696a', marginLeft: 1, verticalAlign: 'text-bottom', animation: 'blink 1s step-end infinite' }} />
+                      )}
+                    </div>
+                    {done && (
+                      <div style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)' }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#13696a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Toast */}
+      <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 10, background: '#1e293b', color: '#fff', borderRadius: 9999, padding: '11px 22px', fontSize: 14, fontWeight: 500, boxShadow: '0 8px 32px rgba(0,0,0,0.2)', whiteSpace: 'nowrap', zIndex: 100 }}>
+        <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2.5px solid rgba(255,255,255,0.25)', borderTopColor: '#fff', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+        Filling form details automatically...
+      </div>
+
+      {/* Footer */}
+      <footer style={{ background: '#fff', borderTop: '1px solid #E2E8F0', padding: '12px 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <p style={{ fontSize: 12, color: '#74777f', margin: 0 }}>© 2024 PaperPilot AI. Secure Government Paperwork Assistant.</p>
+        <div style={{ display: 'flex', gap: 20 }}>
+          {['Privacy Policy', 'Terms of Service', 'Help Center', 'Contact Support'].map(l => (
+            <a key={l} href="#" style={{ fontSize: 12, color: '#74777f', textDecoration: 'none' }}>{l}</a>
+          ))}
+        </div>
+      </footer>
+    </div>
+  )
+}
+
+/* ── Success Screen ── */
+function SuccessScreen({ fillResult, values, onBack }) {
+  const [showModal, setShowModal] = useState(false)
+  const year = new Date().getFullYear()
+  const rand = String(Math.floor(Math.random() * 90000) + 10000)
+  const refNo = 'IC/' + year + '/' + rand
+  const filledCount = Object.keys(fillResult.filled || {}).length
+  const skippedKeys = Object.keys(fillResult.skipped || {})
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#F7FAFC', fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ background: '#1A365D', padding: '32px 40px' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <div>
+            <h1 style={{ color: '#fff', fontSize: 28, fontWeight: 700, margin: '0 0 4px', letterSpacing: '-0.01em' }}>Form Filled Successfully</h1>
+            <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 15, margin: 0 }}>
+              PaperPilot automatically filled {filledCount} field{filledCount !== 1 ? 's' : ''} in your Income Certificate form.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 40px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
+          {/* Screenshot */}
+          <div>
+            <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#111c2c' }}>Automation Screenshot</span>
+                  <span style={{ fontSize: 12, background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 4, padding: '2px 6px', fontWeight: 600 }}>Proof of Completion</span>
+                </div>
+                {fillResult.screenshotUrl && (
+                  <a href={fillResult.screenshotUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#1A365D', fontWeight: 600, textDecoration: 'none' }}>Open Full Size</a>
+                )}
+              </div>
+              {fillResult.screenshotUrl ? (
+                <div onClick={() => setShowModal(true)} style={{ cursor: 'zoom-in', maxHeight: 520, overflow: 'hidden' }}>
+                  <img src={fillResult.screenshotUrl} alt="Autofilled form screenshot" style={{ width: '100%', display: 'block' }} />
+                </div>
+              ) : (
+                <div style={{ padding: 40, textAlign: 'center', color: '#74777f', fontSize: 14 }}>Screenshot not available</div>
+              )}
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, padding: 20 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#74777f', letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 8px' }}>Reference Number</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: '#1A365D', margin: '0 0 4px' }}>{refNo}</p>
+              <p style={{ fontSize: 12, color: '#74777f', margin: 0 }}>Keep this for official correspondence</p>
+            </div>
+
+            <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, padding: 20 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#74777f', letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 16px' }}>Fill Summary</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 14, color: '#43474e' }}>Fields filled</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#166534', background: '#f0fdf4', padding: '2px 10px', borderRadius: 4 }}>{filledCount}</span>
+              </div>
+              {skippedKeys.length > 0 && (
+                <div style={{ marginTop: 10, padding: '10px 12px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a' }}>
+                  <p style={{ fontSize: 12, color: '#92400e', margin: 0 }}>Skipped: {skippedKeys.join(', ')}</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, padding: 20 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#74777f', letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 12px' }}>Confirmed Data</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {CONFIRM_FIELDS.map(({ key, label }) => values[key] && (
+                  <div key={key}>
+                    <p style={{ fontSize: 11, fontWeight: 600, color: '#74777f', margin: '0 0 2px', textTransform: 'uppercase' }}>{label}</p>
+                    <p style={{ fontSize: 13, color: '#111c2c', margin: 0, wordBreak: 'break-word' }}>{values[key]}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button onClick={() => window.print()} style={{ padding: '12px 20px', background: '#1A365D', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+                Print / Save as PDF
+              </button>
+              <button onClick={onBack} style={{ padding: '12px 20px', background: '#fff', color: '#1A365D', border: '1px solid #1A365D', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+                Upload Another Document
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showModal && fillResult.screenshotUrl && (
+        <div onClick={() => setShowModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 16px', background: '#111c2c', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>Full-Page Screenshot</span>
+              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>x</button>
+            </div>
+            <div style={{ overflow: 'auto', flex: 1 }}>
+              <img src={fillResult.screenshotUrl} alt="Full page proof" style={{ maxWidth: '100%', display: 'block' }} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Main Component ── */
+export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }) {
+  const { data, sessionId } = extractedResult ?? {}
+
   const [values, setValues] = useState(() => {
     const init = {}
-    CONFIRM_FIELDS.forEach(({ key }) => {
-      init[key] = data?.[key] ?? ''
-    })
+    CONFIRM_FIELDS.forEach(({ key }) => { init[key] = data?.[key] ?? '' })
     return init
   })
 
-  /* ── Confirmed state per field ── */
-  const [confirmed, setConfirmed] = useState(() =>
+  const [approved, setApproved] = useState(() =>
     Object.fromEntries(CONFIRM_FIELDS.map(({ key }) => [key, false]))
   )
 
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const [fillResult, setFillResult] = useState(null)
+  const [editingKey, setEditingKey] = useState(null)
 
-  const confirmedCount = CONFIRM_FIELDS.filter(({ key }) => confirmed[key]).length
-  const allConfirmed = confirmedCount === CONFIRM_FIELDS.length
-  const progress = (confirmedCount / CONFIRM_FIELDS.length) * 100
-
-  const confirmAll = () => {
-    const next = !allConfirmed
-    setConfirmed(Object.fromEntries(CONFIRM_FIELDS.map(({ key }) => [key, next])))
-    if (next && sessionId) {
-      // Sync confirmed values to session storage
-      fetch(`${API_BASE}/session/confirm`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-ID': sessionId,
-        },
-        credentials: 'include',
-        body: JSON.stringify({ sessionId, data: values }),
-      }).catch(err => console.warn('Session sync failed:', err))
-    }
-  }
+  const approvedCount = CONFIRM_FIELDS.filter(({ key }) => approved[key]).length
+  const allApproved = approvedCount === CONFIRM_FIELDS.length
+  const progress = (approvedCount / CONFIRM_FIELDS.length) * 100
 
   const handleChange = (key, value) => {
     setValues(prev => ({ ...prev, [key]: value }))
-    // Changing a value un-confirms it so user re-reviews
-    if (confirmed[key]) {
-      setConfirmed(prev => ({ ...prev, [key]: false }))
-    }
+    if (approved[key]) setApproved(prev => ({ ...prev, [key]: false }))
   }
 
-  const toggleConfirm = (key) => {
-    setConfirmed(prev => ({ ...prev, [key]: !prev[key] }))
+  const toggleApprove = (key) => setApproved(prev => ({ ...prev, [key]: !prev[key] }))
+
+  const toggleAll = () => {
+    const next = !allApproved
+    setApproved(Object.fromEntries(CONFIRM_FIELDS.map(({ key }) => [key, next])))
   }
 
-  const handleSubmit = () => {
-    if (!allConfirmed) return
+  const handleSubmit = async () => {
+    if (!allApproved) return
     setSubmitting(true)
+    setSubmitError('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
 
-    // Sync confirmed fields to session (fire-and-forget)
     if (sessionId) {
-      fetch(`${API_BASE}/session/confirm`, {
+      fetch(API_BASE + '/session/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Session-ID': sessionId },
         credentials: 'include',
         body: JSON.stringify({ sessionId, data: values }),
-      }).catch(err => console.warn('Session sync failed:', err))
+      }).catch(() => {})
     }
 
-    // Short delay for UX, then show success
-    setTimeout(() => {
-      setSubmitting(false)
+    try {
+      const res = await fetch(API_BASE + '/fill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(sessionId ? { 'X-Session-ID': sessionId } : {}) },
+        credentials: 'include',
+        body: JSON.stringify({ data: values, sessionId }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Autofill failed.')
+      setFillResult(json)
       setSubmitted(true)
-    }, 600)
+    } catch (err) {
+      setSubmitError(err.message || 'Autofill failed. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  /* ── Brief loading state ── */
-  if (submitting) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'linear-gradient(135deg, #e8e0d0 0%, #f0ebe0 50%, #e4ddd0 100%)' }}>
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center" style={{ border: '1.5px solid #B8A77A' }}>
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'EB Garamond, serif', color: '#003580' }}>
-            Preparing Summary...
-          </h3>
-          <p className="text-xs leading-relaxed" style={{ color: '#4A4A6A' }}>
-            Compiling your confirmed details into a downloadable summary.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  /* ── Success screen with printable summary ── */
-  if (submitted) {
-    const refNo = `IC/${new Date().getFullYear()}/${String(Math.floor(Math.random() * 90000) + 10000)}`
-    return (
-      <div className="min-h-screen py-10 px-4" style={{ background: 'linear-gradient(135deg, #e8e0d0 0%, #f0ebe0 50%, #e4ddd0 100%)' }}>
-        <div className="mx-auto max-w-3xl">
-          <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden p-8" style={{ border: '2px solid #138808' }}>
-            <div style={{ height: 6, background: 'linear-gradient(to right, #FF6700 33.33%, #fff 33.33% 66.66%, #138808 66.66%)', position: 'absolute', top: 0, left: 0, right: 0 }} />
-
-            <div className="text-center mb-6">
-              <div className="mx-auto mt-2 mb-4 w-20 h-20 rounded-full border-4 flex items-center justify-center"
-                style={{ borderColor: '#138808', background: '#f0fff4' }}>
-                <svg viewBox="0 0 24 24" className="w-10 h-10" fill="none" stroke="#138808" strokeWidth="2.2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-bold mb-1" style={{ fontFamily: 'EB Garamond, serif', color: '#138808' }}>
-                All Fields Confirmed!
-              </h2>
-              <p className="text-sm" style={{ color: '#4A4A6A' }}>
-                All {CONFIRM_FIELDS.length} fields verified. Your application summary is ready.
-              </p>
-              <div className="my-4 py-3 rounded-lg border max-w-md mx-auto" style={{ borderColor: '#B8A77A', background: '#FDFAF4' }}>
-                <p className="text-xs uppercase tracking-widest mb-1" style={{ color: '#4A4A6A' }}>Application Reference Number</p>
-                <p className="text-xl font-bold tracking-widest" style={{ fontFamily: 'EB Garamond, serif', color: '#003580' }}>{refNo}</p>
-              </div>
-            </div>
-
-            {/* ── Confirmed Fields Summary ── */}
-            <div className="border-t pt-5 mb-6" style={{ borderColor: '#e5e7eb' }}>
-              <h4 className="text-sm font-bold mb-3" style={{ color: '#003580' }}>📋 Confirmed Application Details</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {CONFIRM_FIELDS.map(({ key, label }) => (
-                  <div key={key} className="rounded-xl px-4 py-3" style={{ background: '#f0fdf4', border: '1px solid #86efac' }}>
-                    <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#4A4A6A' }}>{label}</p>
-                    <p className="text-sm font-medium" style={{ color: values[key] ? '#1A1A2E' : '#9CA3AF' }}>
-                      {values[key] || '— Not provided'}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex gap-3 justify-center flex-wrap mt-2">
-              <button
-                onClick={() => window.print()}
-                className="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-md"
-                style={{ background: 'linear-gradient(135deg, #003580 0%, #1a5276 100%)', color: '#fff', border: 'none', cursor: 'pointer' }}
-              >
-                🖨️ Print / Save as PDF
-              </button>
-              <button onClick={onBack}
-                className="px-6 py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors hover:bg-blue-50"
-                style={{ borderColor: '#003580', color: '#003580' }}>
-                ← Upload Another Document
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  if (submitting) return <LoadingScreen values={values} />
+  if (submitted && fillResult) return <SuccessScreen fillResult={fillResult} values={values} onBack={onBack} />
 
   return (
-    <div className="min-h-screen py-8 px-4" style={{ background: 'linear-gradient(135deg, #e8e0d0 0%, #f0ebe0 50%, #e4ddd0 100%)' }}>
-      <div className="mx-auto" style={{ maxWidth: 780 }}>
+    <div style={{ minHeight: '100vh', background: '#F7FAFC', fontFamily: 'Inter, sans-serif', paddingBottom: 88 }}>
 
-        {/* ── Page Header ── */}
-        <div className="mb-6">
-          <button onClick={onBack}
-            className="flex items-center gap-1.5 text-sm mb-4 transition-opacity hover:opacity-70"
-            style={{ color: '#003580', background: 'none', border: 'none', cursor: 'pointer' }}>
-            ← Back to Upload
-          </button>
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-2xl font-bold" style={{ fontFamily: 'EB Garamond, serif', color: '#003580' }}>
-                Verify Extracted Information
-              </h1>
-              <p className="text-sm mt-0.5" style={{ color: '#4A4A6A' }}>
-                Review each AI-extracted field, edit if needed, then click ✓ to confirm. All 8 fields must be confirmed before submitting.
-              </p>
-            </div>
-            {/* File info badge */}
-            <div className="rounded-xl px-3 py-2 text-xs shrink-0" style={{ background: '#f0f4ff', border: '1px solid #a3b4d6', color: '#003580' }}>
-              <p className="font-semibold truncate max-w-[180px]">📄 {fileName}</p>
-              <p style={{ color: '#6B7280' }}>Model: {model}</p>
-            </div>
+      {/* ── Hero Banner ── */}
+      <div style={{ background: '#1A365D', padding: '28px 40px' }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ color: '#fff', fontSize: 30, fontWeight: 700, margin: '0 0 6px', letterSpacing: '-0.01em', lineHeight: '38px' }}>
+              Review Extracted Data
+            </h1>
+            <p style={{ color: 'rgba(255,255,255,0.72)', fontSize: 15, margin: 0, lineHeight: '22px', maxWidth: 580 }}>
+              Nothing proceeds without your approval. Please verify the information extracted from your documents before we generate your final forms.
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 8, padding: '10px 18px', color: '#fff', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0110 0v4" />
+            </svg>
+            Secure Government Filing
           </div>
         </div>
+      </div>
 
-        {/* ── Progress Bar ── */}
-        <div className="rounded-2xl overflow-hidden mb-5 shadow-sm" style={{ background: '#FDFAF4', border: '1.5px solid #B8A77A' }}>
-          <div style={{ height: 5, background: 'linear-gradient(to right, #FF6700 33.33%, #fff 33.33% 66.66%, #138808 66.66%)' }} />
-          <div className="px-6 py-4 flex items-center gap-4">
-            <div className="flex-1">
-              <div className="flex justify-between text-xs mb-1.5" style={{ color: '#4A4A6A' }}>
-                <span className="font-semibold">Confirmation Progress</span>
-                <span className="font-bold" style={{ color: allConfirmed ? '#138808' : '#003580' }}>
-                  {confirmedCount} / {CONFIRM_FIELDS.length} fields confirmed
-                </span>
-              </div>
-              <div className="w-full rounded-full h-2.5" style={{ background: '#e5e7eb' }}>
-                <div
-                  className="h-2.5 rounded-full transition-all duration-500"
-                  style={{
-                    width: `${progress}%`,
-                    background: allConfirmed
-                      ? 'linear-gradient(to right, #138808, #22c55e)'
-                      : 'linear-gradient(to right, #003580, #2563eb)',
-                  }}
-                />
-              </div>
-            </div>
-            <div className="text-2xl font-bold shrink-0" style={{ color: allConfirmed ? '#138808' : '#003580', fontFamily: 'EB Garamond, serif' }}>
-              {confirmedCount}/{CONFIRM_FIELDS.length}
-            </div>
+      {/* ── Content ── */}
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 40px' }}>
+
+        {/* Section Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#111c2c', margin: '0 0 4px', letterSpacing: '-0.01em' }}>
+              Confirm Details
+            </h2>
+            <p style={{ fontSize: 14, color: '#43474e', margin: 0 }}>Review each field carefully.</p>
           </div>
-        </div>
-
-        {/* ── AI Explanation ── */}
-        {explanation && (
-          <div className="rounded-2xl mb-4 overflow-hidden shadow-sm" style={{ background: '#eff6ff', border: '1.5px solid #93c5fd' }}>
-            <div className="px-5 py-4">
-              <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#1e40af' }}>
-                📌 About This Document
-              </p>
-              <p className="text-sm leading-relaxed" style={{ color: '#1e3a8a' }}>{explanation}</p>
-            </div>
-          </div>
-        )}
-
-        {/* ── Checklist ── */}
-        {checklist?.length > 0 && (
-          <div className="rounded-2xl mb-6 overflow-hidden shadow-sm" style={{ background: '#f0fdf4', border: '1.5px solid #86efac' }}>
-            <div className="px-5 py-4">
-              <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#166534' }}>
-                ✅ Documents / Actions Required
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
-                {checklist.map((item, i) => (
-                  <div key={i} className="flex items-start gap-2 text-sm" style={{ color: '#14532d' }}>
-                    <span className="shrink-0 mt-0.5" style={{ color: '#16a34a' }}>✓</span>
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Fields Card ── */}
-        <div className="rounded-2xl overflow-hidden shadow-sm mb-6" style={{ background: '#FDFAF4', border: '1.5px solid #B8A77A' }}>
-          <div style={{ height: 5, background: 'linear-gradient(to right, #FF6700 33.33%, #fff 33.33% 66.66%, #138808 66.66%)' }} />
-
-          <div className="px-6 py-6">
-            <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#4A4A6A' }}>
-                Step 1 — Review, edit if needed, then click ✓ to confirm each field
-              </p>
-              {/* ── Confirm All button ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#43474e' }}>
+                {approvedCount} of {CONFIRM_FIELDS.length} confirmed
+              </span>
               <button
-                id="confirmAllBtn"
-                type="button"
-                onClick={confirmAll}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200"
+                id="approveAllBtn"
+                onClick={toggleAll}
                 style={{
-                  background: allConfirmed ? '#fef9c3' : 'linear-gradient(135deg, #138808 0%, #16a34a 100%)',
-                  border: `2px solid ${allConfirmed ? '#fde047' : '#166534'}`,
-                  color: allConfirmed ? '#854d0e' : '#ffffff',
-                  cursor: 'pointer',
-                  boxShadow: allConfirmed ? 'none' : '0 2px 10px rgba(20,120,20,0.25)',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '6px 14px',
+                  background: allApproved ? '#f0fdf4' : '#1A365D',
+                  color: allApproved ? '#166534' : '#fff',
+                  border: allApproved ? '1px solid #bbf7d0' : 'none',
+                  borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                  transition: 'all 0.2s',
                 }}
               >
-                {allConfirmed ? (
+                {allApproved ? (
                   <>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
                     </svg>
-                    Unconfirm All
+                    All Approved
                   </>
                 ) : (
                   <>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
                     </svg>
-                    Confirm All Fields
+                    Approve All
                   </>
                 )}
               </button>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              {CONFIRM_FIELDS.map(({ key, label, type, colSpan, placeholder }) => {
-                const isConfirmed = confirmed[key]
-                const isEmpty = !values[key]?.trim()
-                return (
-                  <div
-                    key={key}
-                    className={colSpan === 2 ? 'sm:col-span-2' : ''}
-                  >
-                    {/* Label row */}
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-sm font-semibold" style={{ color: '#1A1A2E' }}>
-                        {label}
-                        {isEmpty && !isConfirmed && (
-                          <span className="ml-2 text-xs font-normal px-1.5 py-0.5 rounded" style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>
-                            Not found
-                          </span>
-                        )}
-                      </label>
-                      {/* Confirm toggle */}
-                      <button
-                        type="button"
-                        onClick={() => toggleConfirm(key)}
-                        title={isConfirmed ? 'Click to un-confirm' : 'Click to confirm this field'}
-                        className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-200"
-                        style={{
-                          background: isConfirmed ? '#dcfce7' : '#fef9c3',
-                          border: `1.5px solid ${isConfirmed ? '#86efac' : '#fde047'}`,
-                          color: isConfirmed ? '#166534' : '#854d0e',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {isConfirmed ? (
-                          <>
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                            Confirmed
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                            Confirm
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Input */}
-                    {type === 'textarea' ? (
-                      <textarea
-                        value={values[key]}
-                        onChange={e => handleChange(key, e.target.value)}
-                        placeholder={placeholder}
-                        rows={3}
-                        className="w-full rounded-xl px-3 py-2.5 text-sm transition-all duration-200"
-                        style={{
-                          border: `2px solid ${isConfirmed ? '#86efac' : isEmpty ? '#fbbf24' : '#fde047'}`,
-                          background: isConfirmed ? '#f0fdf4' : isEmpty ? '#fffbeb' : '#fefce8',
-                          color: '#1A1A2E',
-                          outline: 'none',
-                          resize: 'vertical',
-                          fontFamily: 'Inter, sans-serif',
-                        }}
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        value={values[key]}
-                        onChange={e => handleChange(key, e.target.value)}
-                        placeholder={placeholder}
-                        className="w-full rounded-xl px-3 py-2.5 text-sm transition-all duration-200"
-                        style={{
-                          border: `2px solid ${isConfirmed ? '#86efac' : isEmpty ? '#fbbf24' : '#fde047'}`,
-                          background: isConfirmed ? '#f0fdf4' : isEmpty ? '#fffbeb' : '#fefce8',
-                          color: '#1A1A2E',
-                          outline: 'none',
-                          fontFamily: 'Inter, sans-serif',
-                        }}
-                      />
-                    )}
-
-                    {/* State hint */}
-                    <p className="text-xs mt-1" style={{ color: isConfirmed ? '#16a34a' : '#92400e' }}>
-                      {isConfirmed
-                        ? '✓ Field confirmed'
-                        : isEmpty
-                        ? '⚠ Not extracted — please fill manually and confirm'
-                        : '⟳ Edit if needed, then click Confirm'}
-                    </p>
-                  </div>
-                )
-              })}
+            <div style={{ width: 220, height: 4, background: '#E2E8F0', borderRadius: 9999, overflow: 'hidden' }}>
+              <div style={{ height: '100%', borderRadius: 9999, width: progress + '%', background: allApproved ? '#166534' : '#13696a', transition: 'width 0.35s ease' }} />
             </div>
           </div>
         </div>
 
-        {submitError && (
-          <div className="rounded-2xl p-4 mb-4 text-xs font-semibold flex items-center gap-2" style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', color: '#991b1b' }}>
-            <span>⚠ {submitError}</span>
-          </div>
-        )}
+        {/* Fields Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          {CONFIRM_FIELDS.map(({ key, label, type, colSpan, placeholder }) => {
+            const isApproved = approved[key]
+            const hasValue = !!(values[key] && values[key].trim())
+            const cardBorder = isApproved ? '#89d3d4' : '#E2E8F0'
+            const inputBorder = editingKey === key ? '#13696a' : (isApproved ? '#89d3d4' : '#CBD5E0')
 
-        {/* ── Submit Section ── */}
-        <div
-          className="rounded-2xl px-6 py-5 flex items-center justify-between gap-4 flex-wrap shadow-sm"
-          style={{ background: '#FDFAF4', border: '1.5px solid #B8A77A' }}
-        >
-          <div>
-            {allConfirmed ? (
-              <p className="text-sm font-semibold" style={{ color: '#138808' }}>
-                ✅ All fields confirmed — ready to download!
-              </p>
-            ) : (
-              <p className="text-sm font-semibold" style={{ color: '#92400e' }}>
-                ⚠ {CONFIRM_FIELDS.length - confirmedCount} field{CONFIRM_FIELDS.length - confirmedCount !== 1 ? 's' : ''} still need confirmation
-              </p>
-            )}
-            <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
-              Review and confirm all 8 fields to enable download
-            </p>
-          </div>
+            return (
+              <div key={key} style={{ gridColumn: colSpan === 2 ? 'span 2' : 'span 1' }}>
+                <div style={{
+                  background: '#fff',
+                  border: '1px solid ' + cardBorder,
+                  borderRadius: 16,
+                  padding: '18px 20px',
+                  boxShadow: isApproved ? '0 4px 20px rgba(19,105,106,0.07)' : 'none',
+                  transition: 'border-color 0.2s, box-shadow 0.2s',
+                }}>
+                  {/* Card Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 14, marginBottom: 14, borderBottom: '1px solid #E2E8F0' }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#111c2c' }}>{label}</span>
+                    <ConfidenceBadge hasValue={hasValue} />
+                  </div>
 
-          <button
-            onClick={handleSubmit}
-            disabled={!allConfirmed}
-            id="submitForFillingBtn"
-            className="px-8 py-3 rounded-xl text-sm font-bold tracking-wide transition-all duration-300 shadow-lg"
-            style={{
-              background: allConfirmed
-                ? 'linear-gradient(135deg, #003580 0%, #1a5276 100%)'
-                : '#d1d5db',
-              color: allConfirmed ? '#ffffff' : '#9ca3af',
-              cursor: allConfirmed ? 'pointer' : 'not-allowed',
-              boxShadow: allConfirmed ? '0 4px 18px rgba(0,53,128,0.35)' : 'none',
-              border: 'none',
-            }}
-          >
-            {allConfirmed ? '💾 Save Application Summary' : `Confirm All Fields (${confirmedCount}/${CONFIRM_FIELDS.length})`}
-          </button>
+                  {/* Input */}
+                  {type === 'textarea' ? (
+                    <textarea
+                      value={values[key]}
+                      onChange={e => handleChange(key, e.target.value)}
+                      onFocus={() => setEditingKey(key)}
+                      onBlur={() => setEditingKey(null)}
+                      placeholder={placeholder}
+                      rows={3}
+                      style={{ width: '100%', border: 'none', borderBottom: '1.5px solid ' + inputBorder, outline: 'none', fontSize: 16, color: '#111c2c', background: 'transparent', resize: 'none', fontFamily: 'Inter, sans-serif', lineHeight: '24px', padding: '2px 0 10px', boxSizing: 'border-box', transition: 'border-color 0.2s' }}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={values[key]}
+                      onChange={e => handleChange(key, e.target.value)}
+                      onFocus={() => setEditingKey(key)}
+                      onBlur={() => setEditingKey(null)}
+                      placeholder={placeholder}
+                      style={{ width: '100%', border: 'none', borderBottom: '1.5px solid ' + inputBorder, outline: 'none', fontSize: 16, color: '#111c2c', background: 'transparent', fontFamily: 'Inter, sans-serif', padding: '2px 0 10px', boxSizing: 'border-box', transition: 'border-color 0.2s' }}
+                    />
+                  )}
+
+                  {/* Approve Row */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', color: isApproved ? '#13696a' : '#74777f', textTransform: 'uppercase', transition: 'color 0.2s' }}>
+                      {isApproved ? 'Field Approved' : 'Approve Field'}
+                    </span>
+                    <Toggle id={'toggle-' + key} checked={isApproved} onChange={() => toggleApprove(key)} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
 
+        {submitError && (
+          <div style={{ marginTop: 20, padding: '12px 16px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 14, color: '#991b1b', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            {submitError}
+          </div>
+        )}
+      </div>
+
+      {/* ── Sticky Bottom Bar ── */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: '#fff', borderTop: '1px solid #E2E8F0', boxShadow: '0 -4px 20px rgba(26,54,93,0.05)', padding: '14px 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#74777f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span style={{ fontSize: 14, color: '#43474e' }}>
+            {allApproved
+              ? 'All ' + CONFIRM_FIELDS.length + ' fields approved — ready to fill.'
+              : 'Please review and approve all fields to proceed.'}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            onClick={onBack}
+            style={{ padding: '10px 18px', background: 'transparent', border: '1px solid #CBD5E0', borderRadius: 8, fontSize: 14, fontWeight: 500, color: '#43474e', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
+          >
+            Back
+          </button>
+          <button
+            id="submitForFillingBtn"
+            onClick={handleSubmit}
+            disabled={!allApproved}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 22px', background: allApproved ? '#1A365D' : '#d8e3fa', color: allApproved ? '#fff' : '#74777f', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: allApproved ? 'pointer' : 'not-allowed', fontFamily: 'Inter, sans-serif', transition: 'background 0.2s' }}
+          >
+            {allApproved ? 'Approve All & Fill Form' : approvedCount + '/' + CONFIRM_FIELDS.length + ' approved'}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   )

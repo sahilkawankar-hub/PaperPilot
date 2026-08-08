@@ -3,11 +3,12 @@ import multer from 'multer'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import Groq from 'groq-sdk'
-import { dirname } from 'path'
+import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { createWorker } from 'tesseract.js'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'module'
+import { fillForm } from './fill-form.mjs'
 const require = createRequire(import.meta.url)
 const pdfParse = require('pdf-parse')
 
@@ -86,6 +87,11 @@ app.use(cors({
   methods: ['POST', 'GET', 'PUT', 'DELETE'],
 }))
 app.use(express.json())
+
+/* ──────────────────────────────────────────────
+   Serve screenshots directory as static files
+────────────────────────────────────────────── */
+app.use('/screenshots', express.static(join(__dirname, 'screenshots')))
 
 /* ──────────────────────────────────────────────
    Multer – memory storage, 10 MB limit
@@ -316,6 +322,49 @@ app.post('/session/confirm', (req, res) => {
     sessionId,
     confirmedData: session.confirmedData,
   })
+})
+
+/* ──────────────────────────────────────────────
+   POST /fill
+   Accepts confirmed field data, uses Playwright to
+   autofill the Income Certificate form, and returns
+   a screenshot URL as proof.
+────────────────────────────────────────────── */
+app.post('/fill', async (req, res) => {
+  try {
+    const data = req.body?.data || req.body
+    if (!data || typeof data !== 'object') {
+      return res.status(400).json({ error: 'Body must be a JSON object with form field values.' })
+    }
+
+    const sessionId = req.headers['x-session-id'] || req.body?.sessionId
+    console.log(`\n[/fill] ─── Autofill request ─── Session: ${sessionId || 'none'}`)
+    console.log(`[/fill] Fields:`, JSON.stringify(data, null, 2))
+
+    const result = await fillForm(data)
+
+    // Persist screenshot URL in session if available
+    if (sessionId && sessions.has(sessionId)) {
+      const session = sessions.get(sessionId)
+      session.screenshotUrl = result.screenshotUrl
+    }
+
+    const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`
+    const screenshotUrl = `${BASE_URL}${result.screenshotUrl}`
+
+    console.log(`[/fill] ✅ Autofill complete. Screenshot: ${screenshotUrl}`)
+
+    return res.json({
+      success: true,
+      screenshotUrl,
+      screenshotFile: result.screenshotFile,
+      filled: result.filled,
+      skipped: result.skipped,
+    })
+  } catch (err) {
+    console.error('[/fill] Error:', err)
+    return res.status(500).json({ error: 'Autofill failed.', detail: err.message })
+  }
 })
 
 /* ──────────────────────────────────────────────
