@@ -1,13 +1,24 @@
-# Uses Microsoft's official Playwright image — Chromium + all system deps pre-installed
-FROM mcr.microsoft.com/playwright/node:22-jammy
+FROM node:22-bookworm-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install wget + ca-certs needed by Playwright's browser downloader
+RUN apt-get update && apt-get install -y \
+    wget \
+    ca-certificates \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
+
+# Skip browser download during npm ci (we'll install below)
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
 RUN npm ci
 
-# Copy server source
+# Install Chromium + system deps — works because we ARE root inside Docker
+RUN npx playwright install chromium --with-deps
+
 COPY . .
 
 ENV NODE_ENV=production
