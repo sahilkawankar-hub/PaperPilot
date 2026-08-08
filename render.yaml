@@ -16,4 +16,6 @@ services:
         value: llama-3.3-70b-versatile
       - key: CLIENT_ORIGIN
         sync: false
+      - key: FORM_URL
+        sync: false
     healthCheckPath: /health
