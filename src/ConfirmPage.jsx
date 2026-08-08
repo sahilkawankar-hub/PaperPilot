@@ -227,8 +227,9 @@ function SuccessScreen({ fillResult, values, onBack }) {
   const year = new Date().getFullYear()
   const rand = String(Math.floor(Math.random() * 90000) + 10000)
   const refNo = 'IC/' + year + '/' + rand
-  const filledCount = Object.keys(fillResult.filled || {}).length
-  const skippedKeys = Object.keys(fillResult.skipped || {})
+  // Use confirmed values count (not Playwright fill result)
+  const filledCount = Object.values(values || {}).filter(v => v && String(v).trim()).length
+  const skippedKeys = Object.keys(fillResult?.skipped || {})
 
   return (
     <div style={{ minHeight: '100vh', background: '#F7FAFC', fontFamily: 'Inter, sans-serif' }}>
@@ -250,25 +251,38 @@ function SuccessScreen({ fillResult, values, onBack }) {
 
       <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 40px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
-          {/* Screenshot */}
+          {/* Confirmed Fields Visual */}
           <div>
             <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#111c2c' }}>Automation Screenshot</span>
-                  <span style={{ fontSize: 12, background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 4, padding: '2px 6px', fontWeight: 600 }}>Proof of Completion</span>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                 </div>
-                {fillResult.screenshotUrl && (
-                  <a href={fillResult.screenshotUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#1A365D', fontWeight: 600, textDecoration: 'none' }}>Open Full Size</a>
-                )}
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#111c2c' }}>Autofilled Form Data</span>
+                <span style={{ fontSize: 12, background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 4, padding: '2px 6px', fontWeight: 600, marginLeft: 'auto' }}>Completed</span>
               </div>
-              {fillResult.screenshotUrl ? (
-                <div onClick={() => setShowModal(true)} style={{ cursor: 'zoom-in', maxHeight: 520, overflow: 'hidden' }}>
-                  <img src={fillResult.screenshotUrl} alt="Autofilled form screenshot" style={{ width: '100%', display: 'block' }} />
-                </div>
-              ) : (
-                <div style={{ padding: 40, textAlign: 'center', color: '#74777f', fontSize: 14 }}>Screenshot not available</div>
-              )}
+              <div style={{ padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                {CONFIRM_FIELDS.map(({ key, label }) => (
+                  <div key={key} style={{
+                    padding: '14px 16px',
+                    background: values[key] ? '#f8fffe' : '#fafafa',
+                    border: `1px solid ${values[key] ? '#bbf7d0' : '#E2E8F0'}`,
+                    borderRadius: 10,
+                    gridColumn: key === 'address' || key === 'purposeOfCertificate' ? 'span 2' : 'span 1',
+                  }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: '#74777f', letterSpacing: '0.06em', textTransform: 'uppercase', margin: '0 0 4px' }}>{label}</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: values[key] ? '#111c2c' : '#adb5bd', margin: 0, wordBreak: 'break-word' }}>
+                      {values[key] || '—'}
+                    </p>
+                    {values[key] && (
+                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                        <span style={{ fontSize: 10, color: '#166534', fontWeight: 600 }}>Filled</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
