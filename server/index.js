@@ -3,9 +3,8 @@ import multer from 'multer'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import Groq from 'groq-sdk'
-import { join, dirname } from 'path'
+import { dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { fillForm } from './fill-form.mjs'
 import { createWorker } from 'tesseract.js'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'module'
@@ -71,9 +70,6 @@ function getOrCreateSession(req, res, createNew = false) {
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// On Render the public URL is injected as RENDER_EXTERNAL_URL; fall back to localhost for dev
-const BASE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`
-
 const ALLOWED_ORIGINS = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map(o => o.trim())
@@ -90,9 +86,6 @@ app.use(cors({
   methods: ['POST', 'GET', 'PUT', 'DELETE'],
 }))
 app.use(express.json())
-
-// Serve generated screenshots statically at /screenshots/<filename>
-app.use('/screenshots', express.static(join(__dirname, 'screenshots')))
 
 /* ──────────────────────────────────────────────
    Multer – memory storage, 10 MB limit
@@ -323,54 +316,6 @@ app.post('/session/confirm', (req, res) => {
     sessionId,
     confirmedData: session.confirmedData,
   })
-})
-
-/* ──────────────────────────────────────────────
-   POST /fill-form
-   Executes Playwright form filling using session data (or provided body)
-────────────────────────────────────────────── */
-app.post('/fill-form', async (req, res) => {
-  const { sessionId, session } = getOrCreateSession(req, res, false)
-
-  // Merge order: session.extractedData -> session.confirmedData -> req.body
-  const bodyData = req.body && typeof req.body === 'object' ? req.body : {}
-  const data = {
-    ...(session.extractedData || {}),
-    ...(session.confirmedData || {}),
-    ...bodyData,
-  }
-
-  const ALLOWED_KEYS = [
-    'applicantName', 'fatherOrHusbandName', 'address', 'dateOfBirth',
-    'annualIncome', 'occupation', 'purposeOfCertificate', 'aadhaarNumber',
-  ]
-  const hasAny = ALLOWED_KEYS.some((k) => data[k])
-  if (!hasAny) {
-    return res.status(400).json({
-      error: `No field values found for session (${sessionId}) or request body. Please upload/confirm fields first.`,
-    })
-  }
-
-  console.log(`[/fill-form] Starting Playwright fill for Session (${sessionId}) with ${Object.keys(data).length} fields...`)
-
-  try {
-    const result = await fillForm(data)
-    session.screenshotUrl = `${BASE_URL}${result.screenshotUrl}`
-    session.filledAt = new Date().toISOString()
-
-    return res.status(200).json({
-      success: true,
-      sessionId,
-      screenshotUrl: session.screenshotUrl,
-      screenshotFile: result.screenshotFile,
-      screenshotPath: result.screenshotPath,
-      filled: result.filled,
-      skipped: result.skipped,
-    })
-  } catch (err) {
-    console.error('[/fill-form] Playwright error:', err.message)
-    return res.status(500).json({ error: 'Form fill failed.', detail: err.message })
-  }
 })
 
 /* ──────────────────────────────────────────────

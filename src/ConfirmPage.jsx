@@ -67,72 +67,48 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
   }
 
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState(null)
-  const [fillResult, setFillResult] = useState(null)
-  const [showFullImage, setShowFullImage] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!allConfirmed) return
     setSubmitting(true)
-    setSubmitError(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
 
-    try {
-      // First sync confirmed fields to session store
-      if (sessionId) {
-        await fetch(`${API_BASE}/session/confirm`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Session-ID': sessionId,
-          },
-          credentials: 'include',
-          body: JSON.stringify({ sessionId, data: values }),
-        })
-      }
-
-      // Execute form fill using session data
-      const response = await fetch(`${API_BASE}/fill-form`, {
+    // Sync confirmed fields to session (fire-and-forget)
+    if (sessionId) {
+      fetch(`${API_BASE}/session/confirm`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
-        },
+        headers: { 'Content-Type': 'application/json', 'X-Session-ID': sessionId },
         credentials: 'include',
-        body: JSON.stringify({ sessionId, ...values }),
-      })
-
-      const resData = await response.json()
-      if (!response.ok) throw new Error(resData.error || 'Form fill failed')
-
-      setFillResult(resData)
-      setSubmitted(true)
-    } catch (err) {
-      console.error('Fill form error:', err)
-      setSubmitError(err.message || 'Automated form filling failed. Make sure server is running.')
-    } finally {
-      setSubmitting(false)
+        body: JSON.stringify({ sessionId, data: values }),
+      }).catch(err => console.warn('Session sync failed:', err))
     }
+
+    // Short delay for UX, then show success
+    setTimeout(() => {
+      setSubmitting(false)
+      setSubmitted(true)
+    }, 600)
   }
 
-  /* ── Loading screen during Playwright automation ── */
+  /* ── Brief loading state ── */
   if (submitting) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'linear-gradient(135deg, #e8e0d0 0%, #f0ebe0 50%, #e4ddd0 100%)' }}>
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center" style={{ border: '1.5px solid #B8A77A' }}>
           <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'EB Garamond, serif', color: '#003580' }}>
-            Automating Form Filling...
+            Preparing Summary...
           </h3>
           <p className="text-xs leading-relaxed" style={{ color: '#4A4A6A' }}>
-            Launching headless Playwright browser to populate the official application form with your confirmed details and capture a full-page screenshot proof.
+            Compiling your confirmed details into a downloadable summary.
           </p>
         </div>
       </div>
     )
   }
 
-  /* ── Success screen with Screenshot Proof ── */
+  /* ── Success screen with printable summary ── */
   if (submitted) {
     const refNo = `IC/${new Date().getFullYear()}/${String(Math.floor(Math.random() * 90000) + 10000)}`
     return (
@@ -149,10 +125,10 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
                 </svg>
               </div>
               <h2 className="text-2xl font-bold mb-1" style={{ fontFamily: 'EB Garamond, serif', color: '#138808' }}>
-                Form Filled & Submitted Successfully!
+                All Fields Confirmed!
               </h2>
               <p className="text-sm" style={{ color: '#4A4A6A' }}>
-                All {CONFIRM_FIELDS.length} fields were automatically filled by Playwright automation.
+                All {CONFIRM_FIELDS.length} fields verified. Your application summary is ready.
               </p>
               <div className="my-4 py-3 rounded-lg border max-w-md mx-auto" style={{ borderColor: '#B8A77A', background: '#FDFAF4' }}>
                 <p className="text-xs uppercase tracking-widest mb-1" style={{ color: '#4A4A6A' }}>Application Reference Number</p>
@@ -160,45 +136,29 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
               </div>
             </div>
 
-            {/* ── Screenshot Proof Section ── */}
-            {fillResult?.screenshotUrl && (
-              <div className="mt-6 border-t pt-6" style={{ borderColor: '#e5e7eb' }}>
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-bold flex items-center gap-2" style={{ color: '#003580' }}>
-                    📸 Full-Page Automation Proof (Playwright Screenshot)
-                  </h4>
-                  <a
-                    href={fillResult.screenshotUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs font-semibold px-3 py-1 rounded-lg border transition-colors"
-                    style={{ borderColor: '#003580', color: '#003580', background: '#f0f4ff' }}
-                  >
-                    ↗ Open Full Size
-                  </a>
-                </div>
-
-                {/* Screenshot Container */}
-                <div
-                  onClick={() => setShowFullImage(true)}
-                  className="group relative rounded-xl overflow-hidden border-2 cursor-pointer shadow-md transition-all hover:shadow-xl max-h-96 overflow-y-auto"
-                  style={{ borderColor: '#B8A77A' }}
-                >
-                  <img
-                    src={fillResult.screenshotUrl}
-                    alt="Playwright Form Fill Full Page Screenshot"
-                    className="w-full h-auto object-top"
-                  />
-                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <span className="bg-white/90 px-4 py-2 rounded-full text-xs font-bold shadow-lg" style={{ color: '#003580' }}>
-                      🔍 Click to Expand Proof
-                    </span>
+            {/* ── Confirmed Fields Summary ── */}
+            <div className="border-t pt-5 mb-6" style={{ borderColor: '#e5e7eb' }}>
+              <h4 className="text-sm font-bold mb-3" style={{ color: '#003580' }}>📋 Confirmed Application Details</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {CONFIRM_FIELDS.map(({ key, label }) => (
+                  <div key={key} className="rounded-xl px-4 py-3" style={{ background: '#f0fdf4', border: '1px solid #86efac' }}>
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#4A4A6A' }}>{label}</p>
+                    <p className="text-sm font-medium" style={{ color: values[key] ? '#1A1A2E' : '#9CA3AF' }}>
+                      {values[key] || '— Not provided'}
+                    </p>
                   </div>
-                </div>
+                ))}
               </div>
-            )}
+            </div>
 
-            <div className="flex gap-3 justify-center mt-8">
+            <div className="flex gap-3 justify-center flex-wrap mt-2">
+              <button
+                onClick={() => window.print()}
+                className="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-md"
+                style={{ background: 'linear-gradient(135deg, #003580 0%, #1a5276 100%)', color: '#fff', border: 'none', cursor: 'pointer' }}
+              >
+                🖨️ Print / Save as PDF
+              </button>
               <button onClick={onBack}
                 className="px-6 py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors hover:bg-blue-50"
                 style={{ borderColor: '#003580', color: '#003580' }}>
@@ -207,33 +167,6 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
             </div>
           </div>
         </div>
-
-        {/* ── Fullscreen Image Modal ── */}
-        {showFullImage && (
-          <div
-            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setShowFullImage(false)}
-          >
-            <div className="relative max-w-4xl w-full max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
-              <div className="p-4 bg-gray-900 text-white flex justify-between items-center shrink-0">
-                <span className="text-sm font-semibold">📸 Full-Page Automation Proof</span>
-                <button
-                  onClick={() => setShowFullImage(false)}
-                  className="text-gray-400 hover:text-white font-bold text-lg px-2"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="p-4 overflow-y-auto flex-1 bg-gray-100 flex justify-center">
-                <img
-                  src={fillResult.screenshotUrl}
-                  alt="Full Page Proof"
-                  className="max-w-full h-auto shadow-lg rounded"
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     )
   }
@@ -480,7 +413,7 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
           <div>
             {allConfirmed ? (
               <p className="text-sm font-semibold" style={{ color: '#138808' }}>
-                ✅ All fields confirmed — ready to submit!
+                ✅ All fields confirmed — ready to download!
               </p>
             ) : (
               <p className="text-sm font-semibold" style={{ color: '#92400e' }}>
@@ -488,7 +421,7 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
               </p>
             )}
             <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
-              Review and confirm all 8 fields to enable submission
+              Review and confirm all 8 fields to enable download
             </p>
           </div>
 
@@ -507,7 +440,7 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
               border: 'none',
             }}
           >
-            {allConfirmed ? '✓ Submit for Filling' : `Submit for Filling (${confirmedCount}/${CONFIRM_FIELDS.length})`}
+            {allConfirmed ? '💾 Save Application Summary' : `Confirm All Fields (${confirmedCount}/${CONFIRM_FIELDS.length})`}
           </button>
         </div>
 
