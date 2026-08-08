@@ -32,6 +32,7 @@ export default function ConfirmPage({ extractedResult, onBack, onSubmitSuccess }
   )
 
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   const confirmedCount = CONFIRM_FIELDS.filter(({ key }) => confirmed[key]).length
   const allConfirmed = confirmedCount === CONFIRM_FIELDS.length
